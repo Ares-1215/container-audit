@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="auto">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>移櫃確認稽核</title>
+<style>
+:root{
+  --bg:#f4f6f9; --card:#ffffff; --ink:#1c2430; --ink2:#5a6a7e; --muted:#8a97a8;
+  --line:#dde4ec; --accent:#0d6efd; --accent-ink:#ffffff;
+  --good:#0ca30c; --good-text:#006300; --warn:#fab219; --warn-text:#7a5200; --crit:#d03b3b; --crit-text:#a11f1f;
+  --good-bg:#e6f6e6; --warn-bg:#fdf3d9; --crit-bg:#fbe5e5;
+  --chip-ink:#1c2430; --shadow:0 1px 3px rgba(16,24,40,.08),0 1px 2px rgba(16,24,40,.06);
+}
+[data-theme="dark"]{
+  --bg:#10161f; --card:#1a222e; --ink:#e6ecf4; --ink2:#a8b6c8; --muted:#748296;
+  --line:#2a3543; --accent:#4d94ff; --accent-ink:#0b1220;
+  --good:#0ca30c; --good-text:#5ed35e; --warn:#fab219; --warn-text:#ffd15e; --crit:#e05252; --crit-text:#ff9b9b;
+  --good-bg:#12301a; --warn-bg:#33290e; --crit-bg:#3a1717;
+  --chip-ink:#e6ecf4; --shadow:0 1px 3px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Segoe UI","Microsoft JhengHei","微軟正黑體",sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.55}
+header{display:flex;align-items:center;gap:12px;padding:14px 20px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20;flex-wrap:wrap}
+header h1{font-size:1.15rem;margin:0;font-weight:700}
+header .sub{color:var(--muted);font-size:.8rem}
+.spacer{flex:1}
+button,select,input[type=text],input[type=password]{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 12px}
+button{cursor:pointer}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+button.ghost{background:transparent}
+main{max-width:1180px;margin:0 auto;padding:18px 16px 60px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;box-shadow:var(--shadow)}
+.card .k{font-size:.78rem;color:var(--ink2)}
+.card .v{font-size:1.7rem;font-weight:700;letter-spacing:.5px}
+.card .v small{font-size:.85rem;font-weight:400;color:var(--muted)}
+.card.good .v{color:var(--good-text)} .card.warn .v{color:var(--warn-text)} .card.crit .v{color:var(--crit-text)}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0 16px}
+.toolbar .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.toolbar .seg button{border:none;border-radius:0;padding:6px 12px;background:var(--card)}
+.toolbar .seg button.on{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.confirm{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
+.confirm .head{display:flex;gap:14px;flex-wrap:wrap;align-items:baseline;padding:10px 16px;border-bottom:1px solid var(--line);font-size:.86rem;color:var(--ink2)}
+.confirm .head b{color:var(--ink);font-size:.95rem}
+.confirm .chips{padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;border:1.5px solid;cursor:pointer;font-weight:600;font-size:.9rem;color:var(--chip-ink);background:var(--card)}
+.chip .ico{font-size:.8rem}
+.chip.green{background:var(--good-bg);border-color:var(--good)}
+.chip.yellow{background:var(--warn-bg);border-color:var(--warn)}
+.chip.red{background:var(--crit-bg);border-color:var(--crit)}
+.chip:hover{filter:brightness(.96)}
+.empty{color:var(--muted);text-align:center;padding:40px 0}
+dialog{border:none;border-radius:14px;max-width:760px;width:calc(100vw - 32px);padding:0;background:var(--card);color:var(--ink);box-shadow:0 10px 40px rgba(0,0,0,.35)}
+dialog::backdrop{background:rgba(10,15,22,.55)}
+.dlg-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.dlg-head h2{margin:0;font-size:1.05rem}
+.dlg-body{padding:14px 18px;max-height:70vh;overflow:auto}
+.verdict-band{border-radius:10px;padding:10px 14px;margin-bottom:12px;font-weight:600;display:flex;gap:8px;align-items:flex-start}
+.verdict-band.green{background:var(--good-bg);color:var(--good-text)}
+.verdict-band.yellow{background:var(--warn-bg);color:var(--warn-text)}
+.verdict-band.red{background:var(--crit-bg);color:var(--crit-text)}
+.sec-title{font-size:.82rem;color:var(--muted);margin:14px 0 6px;font-weight:700;letter-spacing:.5px}
+table{border-collapse:collapse;width:100%;font-size:.84rem}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+th,td{padding:6px 10px;text-align:left;white-space:nowrap}
+thead th{background:var(--bg);color:var(--ink2);font-weight:600;position:sticky;top:0}
+tbody tr{border-top:1px solid var(--line)}
+tr.zone{background:var(--good-bg)}
+tr.zone td:first-child{font-weight:700}
+.tag{display:inline-block;padding:1px 8px;border-radius:6px;font-size:.76rem;font-weight:600}
+.tag.in{background:var(--good-bg);color:var(--good-text)}
+.tag.out{background:var(--crit-bg);color:var(--crit-text)}
+#gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:50}
+#gate .box{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:34px 38px;box-shadow:var(--shadow);text-align:center;max-width:320px}
+#gate h1{margin:0 0 6px;font-size:1.2rem}
+#gate p{color:var(--muted);font-size:.85rem;margin:0 0 18px}
+#gate input{width:100%;text-align:center;font-size:1.2rem;letter-spacing:6px;margin-bottom:12px}
+#gate button{width:100%}
+#gate .err{color:var(--crit-text);font-size:.82rem;min-height:1.2em;margin-top:8px}
+.note{color:var(--muted);font-size:.78rem;margin-top:4px}
+@media (max-width:640px){
+  header{padding:10px 12px} main{padding:12px 10px 40px}
+  .confirm .head{gap:8px;font-size:.8rem}
+}
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="box">
+    <h1>移櫃確認稽核</h1>
+    <p>彰化轉運中心｜請輸入通行碼</p>
+    <input id="pw" type="password" inputmode="numeric" maxlength="8" autofocus>
+    <button class="primary" onclick="login()">進入</button>
+    <div class="err" id="gateErr"></div>
+  </div>
+</div>
+
+<header style="display:none" id="hdr">
+  <h1>🔍 移櫃確認稽核</h1>
+  <span class="sub">彰化 4106｜場區＝彰化＋秀水</span>
+  <div class="spacer"></div>
+  <select id="dateSel" onchange="loadRun(this.value)"></select>
+  <button class="ghost" onclick="exportCsv()" title="匯出目前篩選結果">⬇ 匯出CSV</button>
+  <button class="ghost" id="themeBtn" onclick="cycleTheme()">🌓</button>
+</header>
+
+<main style="display:none" id="mainEl">
+  <div class="cards" id="cards"></div>
+  <div class="toolbar">
+    <div class="seg" id="filterSeg">
+      <button data-f="all" class="on" onclick="setFilter('all',this)">全部</button>
+      <button data-f="green" onclick="setFilter('green',this)">✓ 正常</button>
+      <button data-f="yellow" onclick="setFilter('yellow',this)">⚠ 待複判</button>
+      <button data-f="red" onclick="setFilter('red',this)">✕ 查無紀錄</button>
+    </div>
+    <input type="text" id="q" placeholder="搜尋櫃號／司機／確認人員／車頭" style="flex:1;min-width:200px" oninput="render()">
+    <span class="note" id="runInfo"></span>
+  </div>
+  <div id="list"></div>
+</main>
+
+<dialog id="dlg">
+  <div class="dlg-head">
+    <h2 id="dlgTitle"></h2>
+    <div class="spacer"></div>
+    <button class="ghost" onclick="document.getElementById('dlg').close()">✕ 關閉</button>
+  </div>
+  <div class="dlg-body" id="dlgBody"></div>
+</dialog>
+
+<script>
+const API = "https://hmqnlovyzlvvnkqmfwtt.supabase.co/functions/v1/caudit";
+const V = {green:{ico:"✓",label:"正常"},yellow:{ico:"⚠",label:"待複判"},red:{ico:"✕",label:"查無紀錄"}};
+let token = localStorage.getItem("ca_token") || "";
+let runs = [], cur = null, filter = "all";
+
+async function api(body){
+  const r = await fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const j = await r.json();
+  if(!r.ok) throw new Error(j.error || r.status);
+  return j;
+}
+async function login(){
+  const pw = document.getElementById("pw").value.trim();
+  document.getElementById("gateErr").textContent = "";
+  try{
+    runs = (await api({action:"list_runs",token:pw})).runs;
+    token = pw; localStorage.setItem("ca_token",pw);
+    enter();
+  }catch(e){ document.getElementById("gateErr").textContent = "通行碼錯誤或連線失敗"; }
+}
+document.getElementById("pw").addEventListener("keydown",e=>{if(e.key==="Enter")login()});
+
+function enter(){
+  document.getElementById("gate").style.display = "none";
+  document.getElementById("hdr").style.display = "";
+  document.getElementById("mainEl").style.display = "";
+  const sel = document.getElementById("dateSel");
+  sel.innerHTML = runs.map(r=>`<option value="${r.query_date}">${r.query_date}（綠${r.summary.green??"?"} 黃${r.summary.yellow??"?"} 紅${r.summary.red??"?"}）</option>`).join("");
+  if(runs.length) loadRun(runs[0].query_date);
+  else document.getElementById("list").innerHTML = `<div class="empty">還沒有稽核資料——請在公司電腦執行查核腳本</div>`;
+}
+async function loadRun(date){
+  document.getElementById("list").innerHTML = `<div class="empty">載入中…</div>`;
+  try{
+    cur = await api({action:"get_run",token,date});
+    cur.itemsByConfirm = {};
+    for(const it of cur.items){
+      (cur.itemsByConfirm[it.confirm_id] ??= []).push(it);
+    }
+    render();
+  }catch(e){ document.getElementById("list").innerHTML = `<div class="empty">載入失敗：${e.message}</div>`; }
+}
+function setFilter(f,btn){
+  filter = f;
+  document.querySelectorAll("#filterSeg button").forEach(b=>b.classList.toggle("on",b===btn));
+  render();
+}
+function fmtTs(iso){ return iso ? iso.slice(5,16).replace("T"," ") : ""; }
+function render(){
+  if(!cur) return;
+  const s = cur.run.summary || {};
+  document.getElementById("cards").innerHTML = `
+    <div class="card"><div class="k">移櫃確認</div><div class="v">${s.confirms??cur.confirms.length}<small> 筆</small></div></div>
+    <div class="card"><div class="k">比對櫃次</div><div class="v">${s.items??cur.items.length}<small> 項（${s.containers??"?"} 櫃）</small></div></div>
+    <div class="card good"><div class="k">✓ 正常</div><div class="v">${s.green??0}</div></div>
+    <div class="card warn"><div class="k">⚠ 待複判</div><div class="v">${s.yellow??0}</div></div>
+    <div class="card crit"><div class="k">✕ 查無紀錄</div><div class="v">${s.red??0}</div></div>`;
+  document.getElementById("runInfo").textContent =
+    `回溯 ${cur.run.lookback_days} 天｜抓取於 ${fmtTs(cur.run.fetched_at)}`;
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  let html = "";
+  for(const cf of cur.confirms){
+    let items = cur.itemsByConfirm[cf.id] || [];
+    if(filter!=="all") items = items.filter(i=>i.verdict===filter);
+    if(q){
+      const hay = `${cf.driver} ${cf.confirm_staff} ${cf.truck}`.toLowerCase();
+      items = hay.includes(q) ? items : items.filter(i=>i.container_no.includes(q));
+    }
+    if(!items.length) continue;
+    html += `<div class="confirm">
+      <div class="head">
+        <span>移櫃日 <b>${cf.move_date}</b></span>
+        <span>車頭 <b>${cf.truck}</b></span>
+        <span>司機 <b>${cf.driver}</b></span>
+        <span>確認 <b>${cf.confirm_staff}</b> @ ${cf.confirm_time_raw}</span>
+        <span>${cf.confirm_station}</span>
+        <span>櫃數 <b>${cf.box_count}</b></span>
+      </div>
+      <div class="chips">${items.map(i=>
+        `<span class="chip ${i.verdict}" onclick="openItem(${i.id})" title="${V[i.verdict].label}">
+           <span class="ico">${V[i.verdict].ico}</span>${i.container_no}</span>`).join("")}
+      </div></div>`;
+  }
+  document.getElementById("list").innerHTML = html || `<div class="empty">沒有符合條件的資料</div>`;
+}
+function openItem(id){
+  const it = cur.items.find(x=>x.id===id);
+  const cf = cur.confirms.find(c=>c.id===it.confirm_id);
+  document.getElementById("dlgTitle").textContent = `櫃號 ${it.container_no}`;
+  const ev = it.evidence || {};
+  let b = `<div class="verdict-band ${it.verdict}"><span>${V[it.verdict].ico}</span><span>${V[it.verdict].label}｜${it.reason||""}</span></div>
+    <div class="note">此確認：${cf.confirm_staff} 於 ${cf.confirm_time_raw} 確認（司機 ${cf.driver}／車頭 ${cf.truck}）</div>`;
+  const ivs = ev.intervals || [];
+  if(ivs.length){
+    b += `<div class="sec-title">在站區間（彰化/秀水）</div><div class="tbl-wrap"><table><thead><tr><th>站所</th><th>進站</th><th>離站</th></tr></thead><tbody>`;
+    for(const [s,e,st] of ivs)
+      b += `<tr><td>${st==="4106"?"4106 彰化":"4150 秀水"}</td><td>${fmtTs(s)}</td><td>${e?fmtTs(e):"（未離站）"}</td></tr>`;
+    b += `</tbody></table></div>`;
+  }
+  const un = (ev.unseal||[]).filter(u=>u.zone_hit);
+  if(un.length){
+    b += `<div class="sec-title">拆封櫃紀錄（含彰/秀）</div><div class="tbl-wrap"><table><thead><tr><th>行駛日</th><th>班次</th><th>起→迄</th><th>離站</th><th>進站</th></tr></thead><tbody>`;
+    for(const u of un)
+      b += `<tr><td>${u.day.slice(4,6)}/${u.day.slice(6,8)}</td><td>${u.trip}</td><td>${u.from}→${u.to}</td><td>${u.depart||""}</td><td>${u.arrive||""}</td></tr>`;
+    b += `</tbody></table></div>`;
+  }
+  const ge = ev.gate_events || [];
+  if(ge.length){
+    b += `<div class="sec-title">光罩軌跡（回溯期全站，綠底＝彰化/秀水）</div><div class="tbl-wrap" style="max-height:300px;overflow-y:auto"><table><thead><tr><th>時間</th><th>通過站</th><th>進離</th><th>班次</th><th>車頭/司機</th><th>光罩</th></tr></thead><tbody>`;
+    for(const e of ge)
+      b += `<tr class="${["4106","4150"].includes(e.station_code)?"zone":""}">
+        <td>${fmtTs(e.ts)}</td><td>${e.station}</td>
+        <td><span class="tag ${e.kind==="進站"?"in":"out"}">${e.kind}</span></td>
+        <td>${e.trip}</td><td>${e.truck}／${e.driver}</td><td>${e.mask_type}</td></tr>`;
+    b += `</tbody></table></div>`;
+  }else{
+    b += `<div class="sec-title">光罩軌跡</div><div class="note">回溯期內完全沒有光罩紀錄</div>`;
+  }
+  document.getElementById("dlgBody").innerHTML = b;
+  document.getElementById("dlg").showModal();
+}
+function exportCsv(){
+  if(!cur) return;
+  const rows = [["查詢日","移櫃日","車頭","司機","確認站","確認人員","確認時間","櫃號","燈號","判定理由"]];
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  for(const cf of cur.confirms){
+    let items = cur.itemsByConfirm[cf.id] || [];
+    if(filter!=="all") items = items.filter(i=>i.verdict===filter);
+    if(q){
+      const hay = `${cf.driver} ${cf.confirm_staff} ${cf.truck}`.toLowerCase();
+      items = hay.includes(q) ? items : items.filter(i=>i.container_no.includes(q));
+    }
+    for(const i of items)
+      rows.push([cur.run.query_date,cf.move_date,cf.truck,cf.driver,cf.confirm_station,
+                 cf.confirm_staff,cf.confirm_time_raw,i.container_no,V[i.verdict].label,i.reason||""]);
+  }
+  const csv = "﻿"+rows.map(r=>r.map(c=>`"${String(c??"").replace(/"/g,'""')}"`).join(",")).join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+  a.download = `移櫃稽核_${cur.run.query_date}.csv`;
+  a.click();
+}
+/* 主題 */
+const THEMES = ["auto","light","dark"];
+function applyTheme(t){
+  const real = t==="auto" ? (matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light") : t;
+  document.documentElement.dataset.theme = real;
+  document.getElementById("themeBtn").textContent = t==="auto"?"🌓":(t==="dark"?"🌙":"☀️");
+}
+function cycleTheme(){
+  const t = THEMES[(THEMES.indexOf(localStorage.getItem("ca_theme")||"auto")+1)%3];
+  localStorage.setItem("ca_theme",t); applyTheme(t);
+}
+applyTheme(localStorage.getItem("ca_theme")||"auto");
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>applyTheme(localStorage.getItem("ca_theme")||"auto"));
+/* 自動登入 */
+if(token){
+  api({action:"list_runs",token}).then(j=>{runs=j.runs;enter();}).catch(()=>{});
+}
+</script>
+</body>
+</html>
