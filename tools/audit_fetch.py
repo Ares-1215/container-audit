@@ -100,10 +100,17 @@ def parse_md_hm(txt, base: date):
     return datetime(y, mo, d, h, mi)
 
 
-def fetch_confirms(qdate: str, station: str):
-    """RPT 139 移櫃確認查詢。"""
-    _, rows = query_all_pages(139, "P1,P2,P3,",
-                              {"P1": qdate, "P2": qdate, "P3": station})
+def fetch_confirms(qdate: str, stations):
+    """RPT 139 移櫃確認查詢（可多站，合併去重）。"""
+    rows, seen = [], set()
+    for st in stations:
+        _, rs = query_all_pages(139, "P1,P2,P3,",
+                                {"P1": qdate, "P2": qdate, "P3": st})
+        for c in rs:
+            key = tuple(c[:9])
+            if key not in seen:
+                seen.add(key)
+                rows.append(c)
     base = datetime.strptime(qdate, "%Y%m%d").date()
     confirms = []
     for c in rows:
@@ -184,7 +191,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", default=(date.today() - timedelta(days=1)).strftime("%Y%m%d"))
     ap.add_argument("--lookback", type=int, default=14)
-    ap.add_argument("--station", default="4106")
+    ap.add_argument("--stations", default="4106,4150",
+                    help="移櫃確認查詢站所，逗號分隔(預設彰化+秀水)")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--grace", type=int, default=60,
                     help="確認時間離在站區間邊界多少分鐘內仍算綠燈(預設60)")
@@ -198,8 +206,9 @@ def main():
     win_start = datetime.combine(qd - timedelta(days=args.lookback), datetime.min.time())
     unseal_days = args.unseal_days if args.unseal_days is not None else args.lookback
 
-    print(f"查詢 {args.date} 站所 {args.station}（光罩回溯 {d_from}~{d_to}）...")
-    confirms = fetch_confirms(args.date, args.station)
+    stations = [s.strip() for s in args.stations.split(",") if s.strip()]
+    print(f"查詢 {args.date} 站所 {'+'.join(stations)}（光罩回溯 {d_from}~{d_to}）...")
+    confirms = fetch_confirms(args.date, stations)
     all_containers = sorted({c for cf in confirms for c in cf["containers"]})
     print(f"移櫃確認 {len(confirms)} 筆，不重複櫃號 {len(all_containers)} 個")
 
@@ -291,7 +300,7 @@ def main():
 
     payload = {
         "action": "upload_run", "ingest": CONFIG.get("ingest_token", ""),
-        "date": qd.isoformat(), "station": args.station,
+        "date": qd.isoformat(), "station": "+".join(stations),
         "lookback": args.lookback, "summary": summary,
         "confirms": [dict(cf, items=[{k: it[k] for k in
                                       ("container_no", "verdict", "reason", "evidence")}

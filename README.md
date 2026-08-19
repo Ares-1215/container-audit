@@ -22,6 +22,6 @@
 C:\Users\26516\AppData\Local\Programs\Python\Python312\python.exe tools\audit_fetch.py --date 20260817
 ```
 
-- 不給 `--date` 預設查昨天；`--lookback` 回溯天數(預設14)；`--grace` 寬限分鐘(預設60)；`--dry-run` 不上傳
+- 不給 `--date` 預設查昨天；`--stations` 移櫃確認查詢站所(預設 `4106,4150`＝彰化+秀水)；`--lookback` 回溯天數(預設14)；`--grace` 寬限分鐘(預設60)；`--dry-run` 不上傳
 - 需要 `tools/config.local.json`（含 edge_url 與 ingest_token，不進版控）
 - 跑完自動上傳 Supabase（Edge Function `caudit`，同日重跑會整日覆蓋）
