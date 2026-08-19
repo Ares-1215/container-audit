@@ -168,6 +168,57 @@ def fetch_unseal(container: str, day: str):
     return out
 
 
+def fetch_truck_day(code: str, qdate: str):
+    """RPT 89 運行表及光罩查詢（單日單車頭）。回傳 {truck_label, driver, trips, gates}。"""
+    _, rows = query_all_pages(89, "P1,P2,", {"P1": qdate, "P2": code})
+    label, driver, trips, gates = "", "", [], []
+    for c in rows:
+        if len(c) < 14 or c[1] == "班次代號":
+            continue
+        if not label and c[0]:
+            # [0-9] 而非 \d：\d 會誤匹配車頭名稱裡的全形數字（南區５５）
+            m = re.match(r"(.+?)\s*([0-9]{6}\S*)$", c[0].replace("　", " ").strip(), re.S)
+            if m:
+                label, driver = m.group(1).strip(), m.group(2).strip()
+            else:
+                label = c[0].strip()
+        if c[1] and c[1] not in ("一", "-"):
+            trips.append({"trip_code": c[1], "trip_name": c[2], "from": c[3], "to": c[4],
+                          "depart": c[5], "arrive": c[6], "container": c[7]})
+        if re.match(r"\d{2}/\d{2} \d{2}:\d{2}", c[8] or ""):
+            gates.append({"ts": c[8], "station": c[9], "kind": c[10],
+                          "container": c[11], "trip_name": c[12], "type": c[13]})
+    return {"truck_label": label, "driver": driver, "trips": trips, "gates": gates}
+
+
+def upload(payload):
+    url = CONFIG["edge_url"]
+    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
+                                 method="POST", headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=180, context=SSL_CTX) as r:
+        return r.read().decode("utf-8")[:300]
+
+
+def fetch_and_upload_trucks(confirms, qdate: str, qd_iso: str, dry_run: bool):
+    codes = sorted({cf["truck"].split()[0] for cf in confirms
+                    if cf.get("truck", "").strip()})
+    trucks = []
+    for i, code in enumerate(codes, 1):
+        t = fetch_truck_day(code, qdate)
+        t["truck_code"] = code
+        if not t["truck_label"]:
+            t["truck_label"] = next((cf["truck"] for cf in confirms
+                                     if cf["truck"].startswith(code)), code)
+        trucks.append(t)
+        print(f"  [{i}/{len(codes)}] 車頭 {code}: 班次 {len(t['trips'])}／光罩 {len(t['gates'])}")
+    if dry_run:
+        print(f"（dry-run）車頭 {len(trucks)} 台未上傳")
+        return
+    out = upload({"action": "upload_trucks", "ingest": CONFIG.get("ingest_token", ""),
+                  "date": qd_iso, "trucks": trucks})
+    print("車頭上傳結果:", out)
+
+
 def build_intervals(events, win_start: datetime):
     """把彰化/秀水的進離站配對成在站區間。回傳 [(start,end,station)]，end=None 表示尚未離站。"""
     ivs = []
@@ -215,6 +266,8 @@ def main():
                     help="確認時間離在站區間邊界多少分鐘內仍算綠燈(預設60)")
     ap.add_argument("--unseal-days", type=int, default=None,
                     help="紅燈候選的拆封回查天數(預設=lookback)")
+    ap.add_argument("--trucks-only", action="store_true",
+                    help="只抓當日確認車頭的運行表及光罩並上傳，不重跑稽核")
     args = ap.parse_args()
 
     qd = datetime.strptime(args.date, "%Y%m%d").date()
@@ -228,6 +281,10 @@ def main():
     confirms = fetch_confirms(args.date, stations)
     all_containers = sorted({c for cf in confirms for c in cf["containers"]})
     print(f"移櫃確認 {len(confirms)} 筆，不重複櫃號 {len(all_containers)} 個")
+
+    if args.trucks_only:
+        fetch_and_upload_trucks(confirms, args.date, qd.isoformat(), args.dry_run)
+        return
 
     gate_cache = {}
     for i, cn in enumerate(all_containers, 1):
@@ -336,13 +393,9 @@ def main():
     out_file.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"已存 {out_file}")
 
-    if args.dry_run:
-        return
-    url = CONFIG["edge_url"]
-    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
-                                 method="POST", headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=120, context=SSL_CTX) as r:
-        print("上傳結果:", r.read().decode("utf-8")[:300])
+    if not args.dry_run:
+        print("上傳結果:", upload(payload))
+    fetch_and_upload_trucks(confirms, args.date, qd.isoformat(), args.dry_run)
 
 
 if __name__ == "__main__":

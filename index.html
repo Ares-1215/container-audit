@@ -37,9 +37,17 @@ main{max-width:1180px;margin:0 auto;padding:18px 16px 60px}
 .card .v small{font-size:.85rem;font-weight:400;color:var(--muted)}
 .card.good .v{color:var(--good-text)} .card.warn .v{color:var(--warn-text)} .card.crit .v{color:var(--crit-text)}
 .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0 16px}
-.toolbar .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.toolbar .seg button{border:none;border-radius:0;padding:6px 12px;background:var(--card)}
-.toolbar .seg button.on{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:none;border-radius:0;padding:6px 12px;background:var(--card)}
+.seg button.on{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.truckGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.truckCard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;box-shadow:var(--shadow);cursor:pointer}
+.truckCard:hover{border-color:var(--accent)}
+.truckCard .tc{font-size:1.1rem;font-weight:700}
+.truckCard .td{color:var(--ink2);font-size:.83rem;margin-top:2px}
+.truckCard .tm{color:var(--muted);font-size:.76rem;margin-top:6px}
+.linky{cursor:pointer;color:var(--accent);text-decoration:underline;text-underline-offset:2px}
+.tag.mv{background:var(--warn-bg);color:var(--warn-text)}
 .confirm{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
 .confirm .head{display:flex;gap:14px;flex-wrap:wrap;align-items:baseline;padding:10px 16px;border-bottom:1px solid var(--line);font-size:.86rem;color:var(--ink2)}
 .confirm .head b{color:var(--ink);font-size:.95rem}
@@ -101,12 +109,17 @@ tr.zone td:first-child{font-weight:700}
   <h1>🔍 移櫃確認稽核</h1>
   <span class="sub">移櫃站 4106彰化＋4150秀水</span>
   <div class="spacer"></div>
+  <div class="seg" id="viewSeg">
+    <button class="on" onclick="setView('audit',this)">稽核</button>
+    <button onclick="setView('trucks',this)">車頭</button>
+  </div>
   <select id="dateSel" onchange="loadRun(this.value)"></select>
   <button class="ghost" onclick="exportCsv()" title="匯出目前篩選結果">⬇ 匯出CSV</button>
   <button class="ghost" id="themeBtn" onclick="cycleTheme()">🌓</button>
 </header>
 
 <main style="display:none" id="mainEl">
+ <div id="auditView">
   <div class="cards" id="cards"></div>
   <div class="toolbar">
     <div class="seg" id="filterSeg">
@@ -119,6 +132,11 @@ tr.zone td:first-child{font-weight:700}
     <span class="note" id="runInfo"></span>
   </div>
   <div id="list"></div>
+ </div>
+ <div id="truckView" style="display:none">
+  <div class="note" style="margin:6px 0 12px" id="truckNote">當日移櫃確認出現的車頭運行表與光罩軌跡（點卡片看明細）</div>
+  <div class="truckGrid" id="truckGrid"></div>
+ </div>
 </main>
 
 <dialog id="dlg">
@@ -204,7 +222,7 @@ function render(){
       <div class="head">
         <span>移櫃日 <b>${cf.move_date}</b></span>
         <span>移櫃站 <b>${cf.move_station||""}</b></span>
-        <span>車頭 <b>${cf.truck}</b></span>
+        <span>車頭 <b class="linky" onclick="openTruckByLabel('${cf.truck}')">${cf.truck}</b></span>
         <span>司機 <b>${cf.driver}</b></span>
         <span>確認 <b>${cf.confirm_staff}</b> @ ${cf.confirm_time_raw}（${cf.confirm_station}）</span>
         <span>櫃數 <b>${cf.box_count}</b></span>
@@ -249,6 +267,69 @@ function openItem(id){
     b += `</tbody></table></div>`;
   }else{
     b += `<div class="sec-title">光罩軌跡</div><div class="note">回溯期內完全沒有光罩紀錄</div>`;
+  }
+  document.getElementById("dlgBody").innerHTML = b;
+  document.getElementById("dlg").showModal();
+}
+/* 車頭 */
+let view = "audit";
+const truckCache = {};
+function setView(v,btn){
+  view = v;
+  document.querySelectorAll("#viewSeg button").forEach(b=>b.classList.toggle("on",b===btn));
+  document.getElementById("auditView").style.display = v==="audit"?"":"none";
+  document.getElementById("truckView").style.display = v==="trucks"?"":"none";
+  if(v==="trucks") renderTrucks();
+}
+async function getTrucks(date){
+  if(!truckCache[date]) truckCache[date] = (await api({action:"get_trucks",token,date})).trucks;
+  return truckCache[date];
+}
+async function renderTrucks(){
+  if(!cur) return;
+  const g = document.getElementById("truckGrid");
+  g.innerHTML = `<div class="empty">載入中…</div>`;
+  try{
+    const trucks = await getTrucks(cur.run.query_date);
+    g.innerHTML = trucks.length ? trucks.map(t=>
+      `<div class="truckCard" onclick="openTruck('${t.truck_code}')">
+        <div class="tc">${t.truck_label||t.truck_code}</div>
+        <div class="td">${t.driver||""}</div>
+        <div class="tm">班次 ${t.trips.length}｜光罩 ${t.gates.length} 筆</div>
+      </div>`).join("") : `<div class="empty">此日期尚未抓車頭資料（重跑當日查核即可補上）</div>`;
+  }catch(e){ g.innerHTML = `<div class="empty">載入失敗：${e.message}</div>`; }
+}
+function openTruckByLabel(label){
+  openTruck(label.trim().split(/\s+/)[0]);
+}
+const ZONE_CODES = ["4106","4150","4108"];
+async function openTruck(code){
+  const date = cur.run.query_date;
+  let t = null;
+  try{ t = (await getTrucks(date)).find(x=>x.truck_code===code); }catch(e){}
+  document.getElementById("dlgTitle").textContent = `車頭 ${code}｜${date}`;
+  let b = "";
+  if(!t){
+    b = `<div class="note">此日期沒有車頭 ${code} 的資料（只預抓當日移櫃確認出現的車頭；要查其他車頭請重跑當日查核）</div>`;
+  }else{
+    b = `<div class="note">${t.truck_label||""}　司機 ${t.driver||"？"}</div>`;
+    if(t.trips.length){
+      b += `<div class="sec-title">運行表（${t.trips.length} 班）</div><div class="tbl-wrap"><table><thead><tr><th>班次</th><th>名稱</th><th>起站</th><th>迄站</th><th>離站</th><th>進站</th><th>櫃號</th></tr></thead><tbody>`;
+      for(const p of t.trips){
+        const z = ZONE_CODES.some(c=>p.from.startsWith(c)||p.to.startsWith(c));
+        b += `<tr class="${z?"zone":""}"><td>${p.trip_code}</td><td>${p.trip_name}</td><td>${p.from}</td><td>${p.to}</td><td>${p.depart}</td><td>${p.arrive}</td><td>${p.container}</td></tr>`;
+      }
+      b += `</tbody></table></div>`;
+    }
+    if(t.gates.length){
+      b += `<div class="sec-title">光罩軌跡（${t.gates.length} 筆，綠底＝彰化/秀水/伸港）</div><div class="tbl-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>時間</th><th>通過站</th><th>種類</th><th>櫃號</th><th>班次</th><th>類型</th></tr></thead><tbody>`;
+      for(const e of t.gates){
+        const z = ZONE_CODES.some(c=>e.station.startsWith(c));
+        const tag = e.kind==="進站"?"in":(e.kind==="離站"?"out":"mv");
+        b += `<tr class="${z?"zone":""}"><td>${e.ts}</td><td>${e.station}</td><td><span class="tag ${tag}">${e.kind}</span></td><td>${e.container||""}</td><td>${e.trip_name||""}</td><td>${e.type||""}</td></tr>`;
+      }
+      b += `</tbody></table></div>`;
+    }
   }
   document.getElementById("dlgBody").innerHTML = b;
   document.getElementById("dlg").showModal();
