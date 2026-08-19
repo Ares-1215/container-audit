@@ -22,6 +22,9 @@ BASE = ("http://nls.hct.com.tw:8083/old/AA005?MemberShip="
         "%2c8008%2c%e9%81%8b%e5%8b%99%2c0908%2c%e5%85%ac%e5%8f%b8%2c0%2c43")
 ZONE = {"4106", "4150", "4108"}      # 彰化 / 秀水 / 伸港
 ZONE_KEYWORDS = ("彰", "秀", "伸")    # 拆封班次名稱關鍵字（使用者的人工判讀規則）
+# 無光罩門的衛星作業點：櫃子在這些點被移櫃確認時，光罩上看不到；
+# 若確認後首次進場區(或確認前最後離場區)的班次含這些關鍵字，視為在場域內
+SHUTTLE_KEYWORDS = ("彰濱", "芬園", "伸港")
 SSL_CTX = ssl._create_unverified_context()  # 公司網路 TLS 攔截，Supabase 需略過驗證
 
 CONFIG = {}
@@ -187,6 +190,20 @@ def build_intervals(events, win_start: datetime):
     return ivs
 
 
+def shuttle_check(zone_events, cts):
+    """確認時人在無光罩門衛星點（彰濱/芬園…）的判定：
+    確認後「首次」進場區事件、或確認前「最後」離場區事件，班次含接駁關鍵字才成立。"""
+    for e in zone_events:  # 時間升冪
+        ets = datetime.fromisoformat(e["ts"])
+        if e["kind"] == "進站" and ets > cts:
+            return ("in", e) if any(k in e["trip"] for k in SHUTTLE_KEYWORDS) else None
+    for e in reversed(zone_events):
+        ets = datetime.fromisoformat(e["ts"])
+        if e["kind"] == "離站" and ets < cts:
+            return ("out", e) if any(k in e["trip"] for k in SHUTTLE_KEYWORDS) else None
+    return None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", default=(date.today() - timedelta(days=1)).strftime("%Y%m%d"))
@@ -269,6 +286,14 @@ def main():
                           + (f"{hit_iv[1]:%m/%d %H:%M}" if hit_iv[1] else "（未離站）"))
                 if lag_min:
                     reason += f"（邊界誤差 {lag_min} 分內）"
+            elif cts and zone_events and (sh := shuttle_check(zone_events, cts)):
+                kind, e = sh
+                t = e["ts"][5:16].replace("T", " ")
+                verdict = "green"
+                if kind == "in":
+                    reason = f"確認時在衛星點，其後由「{e['trip']}」接駁進站（{t}）"
+                else:
+                    reason = f"確認前由「{e['trip']}」接駁離站至衛星點（{t}）"
             elif zone_events:
                 last = zone_events[-1]
                 verdict = "yellow"
