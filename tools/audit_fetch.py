@@ -20,8 +20,8 @@ from pathlib import Path
 BASE = ("http://nls.hct.com.tw:8083/old/AA005?MemberShip="
         "89219%2c%e9%99%b3%e4%bf%a1%e5%8b%9d%2c8023%2c%e9%81%8b%e6%8c%87"
         "%2c8008%2c%e9%81%8b%e5%8b%99%2c0908%2c%e5%85%ac%e5%8f%b8%2c0%2c43")
-ZONE = {"4106", "4150"}          # 彰化 / 秀水
-ZONE_KEYWORDS = ("彰", "秀")      # 拆封班次名稱關鍵字（使用者的人工判讀規則）
+ZONE = {"4106", "4150", "4108"}      # 彰化 / 秀水 / 伸港
+ZONE_KEYWORDS = ("彰", "秀", "伸")    # 拆封班次名稱關鍵字（使用者的人工判讀規則）
 SSL_CTX = ssl._create_unverified_context()  # 公司網路 TLS 攔截，Supabase 需略過驗證
 
 CONFIG = {}
@@ -262,7 +262,7 @@ def main():
                         hit_iv, lag_min = best[0], round(best[1])
             unseal = []
             if hit_iv:
-                st_name = "彰化" if hit_iv[2] == "4106" else "秀水"
+                st_name = {"4106": "彰化", "4150": "秀水", "4108": "伸港"}.get(hit_iv[2], hit_iv[2])
                 verdict = "green"
                 reason = (f"確認時間落在{st_name}在站區間 "
                           f"{hit_iv[0]:%m/%d %H:%M}~"

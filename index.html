@@ -99,7 +99,7 @@ tr.zone td:first-child{font-weight:700}
 
 <header style="display:none" id="hdr">
   <h1>🔍 移櫃確認稽核</h1>
-  <span class="sub">移櫃站 4106彰化＋4150秀水｜場區＝彰化＋秀水</span>
+  <span class="sub">移櫃站 4106彰化＋4150秀水｜場區＝彰化＋秀水＋伸港</span>
   <div class="spacer"></div>
   <select id="dateSel" onchange="loadRun(this.value)"></select>
   <button class="ghost" onclick="exportCsv()" title="匯出目前篩選結果">⬇ 匯出CSV</button>
@@ -225,9 +225,10 @@ function openItem(id){
     <div class="note">此確認：${cf.confirm_staff} 於 ${cf.confirm_time_raw} 確認（司機 ${cf.driver}／車頭 ${cf.truck}）</div>`;
   const ivs = ev.intervals || [];
   if(ivs.length){
-    b += `<div class="sec-title">在站區間（彰化/秀水）</div><div class="tbl-wrap"><table><thead><tr><th>站所</th><th>進站</th><th>離站</th></tr></thead><tbody>`;
+    b += `<div class="sec-title">在站區間（彰化/秀水/伸港）</div><div class="tbl-wrap"><table><thead><tr><th>站所</th><th>進站</th><th>離站</th></tr></thead><tbody>`;
+    const ZN = {"4106":"4106 彰化","4150":"4150 秀水","4108":"4108 伸港"};
     for(const [s,e,st] of ivs)
-      b += `<tr><td>${st==="4106"?"4106 彰化":"4150 秀水"}</td><td>${fmtTs(s)}</td><td>${e?fmtTs(e):"（未離站）"}</td></tr>`;
+      b += `<tr><td>${ZN[st]||st}</td><td>${fmtTs(s)}</td><td>${e?fmtTs(e):"（未離站）"}</td></tr>`;
     b += `</tbody></table></div>`;
   }
   const un = (ev.unseal||[]).filter(u=>u.zone_hit);
@@ -239,9 +240,9 @@ function openItem(id){
   }
   const ge = ev.gate_events || [];
   if(ge.length){
-    b += `<div class="sec-title">光罩軌跡（回溯期全站，綠底＝彰化/秀水）</div><div class="tbl-wrap" style="max-height:300px;overflow-y:auto"><table><thead><tr><th>時間</th><th>通過站</th><th>進離</th><th>班次</th><th>車頭/司機</th><th>光罩</th></tr></thead><tbody>`;
+    b += `<div class="sec-title">光罩軌跡（回溯期全站，綠底＝彰化/秀水/伸港）</div><div class="tbl-wrap" style="max-height:300px;overflow-y:auto"><table><thead><tr><th>時間</th><th>通過站</th><th>進離</th><th>班次</th><th>車頭/司機</th><th>光罩</th></tr></thead><tbody>`;
     for(const e of ge)
-      b += `<tr class="${["4106","4150"].includes(e.station_code)?"zone":""}">
+      b += `<tr class="${["4106","4150","4108"].includes(e.station_code)?"zone":""}">
         <td>${fmtTs(e.ts)}</td><td>${e.station}</td>
         <td><span class="tag ${e.kind==="進站"?"in":"out"}">${e.kind}</span></td>
         <td>${e.trip}</td><td>${e.truck}／${e.driver}</td><td>${e.mask_type}</td></tr>`;
