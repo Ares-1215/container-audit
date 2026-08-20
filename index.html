@@ -43,16 +43,9 @@ body{
   margin:0;
   font-family:"Segoe UI Variable Text","Segoe UI","Microsoft JhengHei","微軟正黑體",sans-serif;
   background:var(--bg);
-  background-image:radial-gradient(1100px 480px at 50% -12%,color-mix(in srgb,var(--accent) 5%,var(--bg)) 0%,transparent 62%);
-  background-attachment:fixed;
   color:var(--ink);font-size:15px;line-height:1.55;
   font-variant-numeric:tabular-nums;
   -webkit-font-smoothing:antialiased;
-}
-body::after{
-  content:"";position:fixed;inset:0;pointer-events:none;z-index:1;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
-  opacity:var(--grain-opacity);
 }
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 header{
@@ -91,9 +84,7 @@ main{max-width:1180px;margin:0 auto;padding:18px 16px 60px}
 .card{
   background:var(--card);border:1px solid var(--line);border-radius:14px;
   padding:13px 17px;box-shadow:var(--shadow);
-  transition:transform .18s,box-shadow .18s;
 }
-.card:hover{transform:translateY(-1px);box-shadow:var(--shadow-lift)}
 .card .k{font-size:.76rem;color:var(--ink2);letter-spacing:.04em}
 .card .v{font-family:var(--mono);font-size:1.7rem;font-weight:600;letter-spacing:-.02em;margin-top:2px}
 .card .v small{font-family:"Segoe UI Variable Text","Segoe UI","Microsoft JhengHei",sans-serif;font-size:.82rem;font-weight:400;color:var(--muted);letter-spacing:0}
@@ -111,10 +102,9 @@ main{max-width:1180px;margin:0 auto;padding:18px 16px 60px}
 .truckCard{
   background:var(--card);border:1px solid var(--line);border-radius:14px;
   padding:13px 17px;box-shadow:var(--shadow);cursor:pointer;
-  transition:transform .18s,box-shadow .18s,border-color .18s;
+  transition:border-color .15s;
 }
-.truckCard:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:var(--shadow-lift)}
-.truckCard:active{transform:translateY(0)}
+.truckCard:hover{border-color:var(--accent)}
 .truckCard .tc{font-family:var(--mono);font-size:1.05rem;font-weight:600}
 .truckCard .td{color:var(--ink2);font-size:.83rem;margin-top:2px}
 .truckCard .tm{color:var(--muted);font-size:.76rem;margin-top:6px}
@@ -137,14 +127,17 @@ main{max-width:1180px;margin:0 auto;padding:18px 16px 60px}
   border:1.5px solid;cursor:pointer;font-weight:600;font-size:.86rem;
   font-family:var(--mono);letter-spacing:.02em;
   color:var(--chip-ink);background:var(--card);
-  transition:transform .15s,box-shadow .15s;
+  transition:box-shadow .15s;
 }
 .chip .ico{font-size:.78rem}
 .chip.green{background:var(--good-bg);border-color:var(--good)}
 .chip.yellow{background:var(--warn-bg);border-color:var(--warn)}
 .chip.red{background:var(--crit-bg);border-color:var(--crit)}
-.chip:hover{transform:translateY(-1px);box-shadow:var(--shadow)}
-.chip:active{transform:translateY(0) scale(.97)}
+.chip:hover{box-shadow:var(--shadow)}
+.mini{display:inline-block;padding:1px 8px;border-radius:6px;font-size:.78rem;font-weight:600;margin-right:4px}
+.mini.g{background:var(--good-bg);color:var(--good-text)}
+.mini.y{background:var(--warn-bg);color:var(--warn-text)}
+.mini.r{background:var(--crit-bg);color:var(--crit-text)}
 .empty{color:var(--muted);text-align:center;padding:48px 0;font-size:.92rem}
 .empty .ei{font-size:1.9rem;margin-bottom:8px;opacity:.75}
 .skel{position:relative;overflow:hidden;background:var(--line2);border-radius:14px;margin-bottom:12px}
@@ -229,7 +222,8 @@ tr.zone td:first-child{font-weight:700}
   <span class="sub">移櫃站 4106彰化＋4150秀水</span>
   <div class="spacer"></div>
   <div class="seg" id="viewSeg">
-    <button class="on" onclick="setView('audit',this)">稽核</button>
+    <button class="on" onclick="setView('audit',this)">逐櫃</button>
+    <button onclick="setView('drivers',this)">司機</button>
     <button onclick="setView('trucks',this)">車頭</button>
   </div>
   <select id="dateSel" onchange="loadRun(this.value)"></select>
@@ -252,8 +246,12 @@ tr.zone td:first-child{font-weight:700}
   </div>
   <div id="list"></div>
  </div>
+ <div id="driverView" style="display:none">
+  <div class="note" style="margin:6px 0 12px">在場時段＝車頭光罩實際進出場區｜「…」「未離站」為不完整時段，不計入停留合計</div>
+  <div id="driverTable"></div>
+ </div>
  <div id="truckView" style="display:none">
-  <div class="note" style="margin:6px 0 12px" id="truckNote">點卡片看運行表與光罩軌跡</div>
+  <div class="note" style="margin:6px 0 12px" id="truckNote">點卡片看表定班次與實際進出</div>
   <div class="truckGrid" id="truckGrid"></div>
  </div>
 </main>
@@ -309,6 +307,8 @@ async function loadRun(date){
       (cur.itemsByConfirm[it.confirm_id] ??= []).push(it);
     }
     render();
+    if(view==="drivers") renderDrivers();
+    if(view==="trucks") renderTrucks();
   }catch(e){ document.getElementById("list").innerHTML = `<div class="empty">載入失敗：${e.message}</div>`; }
 }
 function setFilter(f,btn){
@@ -396,10 +396,89 @@ let view = "audit";
 const truckCache = {};
 function setView(v,btn){
   view = v;
+  if(!btn) btn = document.querySelector(`#viewSeg button:nth-child(${v==="audit"?1:v==="drivers"?2:3})`);
   document.querySelectorAll("#viewSeg button").forEach(b=>b.classList.toggle("on",b===btn));
   document.getElementById("auditView").style.display = v==="audit"?"":"none";
+  document.getElementById("driverView").style.display = v==="drivers"?"":"none";
   document.getElementById("truckView").style.display = v==="trucks"?"":"none";
   if(v==="trucks") renderTrucks();
+  if(v==="drivers") renderDrivers();
+}
+/* 司機彙總 */
+function parseMD(ts){ // "MM/DD HH:MM" → 分鐘（跨月極端情況不處理，單日資料足夠）
+  const m = ts.match(/(\d{2})\/(\d{2}) (\d{2}):(\d{2})/);
+  return m ? ((+m[1])*31+(+m[2]))*1440 + (+m[3])*60 + (+m[4]) : null;
+}
+function zoneIntervals(gates){
+  const zs = (gates||[]).filter(g=>ZONE_CODES.some(c=>g.station.startsWith(c)) && (g.kind==="進站"||g.kind==="離站"));
+  const ivs = []; let open = null;
+  for(const g of zs){
+    if(g.kind==="進站"){ if(!open) open = g.ts; }
+    else { ivs.push([open, g.ts]); open = null; }
+  }
+  if(open) ivs.push([open, null]);
+  // 相鄰時段間隔 ≤15 分鐘視為連續（彰化↔秀水間短暫轉場）
+  const merged = [];
+  for(const iv of ivs){
+    const last = merged[merged.length-1];
+    if(last && last[1] && iv[0] && parseMD(iv[0]) - parseMD(last[1]) <= 15) last[1] = iv[1];
+    else merged.push([...iv]);
+  }
+  return merged;
+}
+function fmtDur(mins){
+  if(mins == null) return "—";
+  return `${Math.floor(mins/60)} 時 ${mins%60} 分`;
+}
+async function renderDrivers(){
+  if(!cur) return;
+  const el = document.getElementById("driverTable");
+  el.innerHTML = `<div class="skel" style="height:120px"></div>`;
+  let trucks = [];
+  try{ trucks = await getTrucks(cur.run.query_date); }catch(e){}
+  const byTruck = Object.fromEntries(trucks.map(t=>[t.truck_code,t]));
+  // 依 司機+車頭 分組
+  const groups = {};
+  for(const cf of cur.confirms){
+    const code = (cf.truck||"").trim().split(/\s+/)[0];
+    const key = `${cf.driver}|${code}`;
+    (groups[key] ??= {driver:cf.driver, truck:cf.truck, code, n:0, boxes:0, g:0, y:0, r:0}).n++;
+    groups[key].boxes += cf.box_count||0;
+    for(const it of (cur.itemsByConfirm[cf.id]||[]))
+      groups[key][it.verdict==="green"?"g":it.verdict==="yellow"?"y":"r"]++;
+  }
+  const rows = Object.values(groups).sort((a,b)=>(b.r-a.r)||(b.y-a.y)||(b.boxes-a.boxes));
+  if(!rows.length){ el.innerHTML = `<div class="empty">沒有資料</div>`; return; }
+  let h = `<div class="tbl-wrap"><table><thead><tr><th>司機</th><th>車頭</th><th>回報</th><th>逐櫃查核</th><th>實際在場時段</th><th>停留合計</th></tr></thead><tbody>`;
+  for(const d of rows){
+    const t = byTruck[d.code];
+    let ivHtml = "無車頭資料", dur = null;
+    if(t){
+      const ivs = zoneIntervals(t.gates);
+      if(!ivs.length) ivHtml = "當日無場區光罩";
+      else{
+        ivHtml = ivs.map(([a,b])=>`${a||"…"}～${b||"未離站"}`).join("<br>");
+        dur = ivs.reduce((s,[a,b])=>(a&&b)? s+(parseMD(b)-parseMD(a)) : s, 0);
+      }
+    }
+    const audit = [d.g?`<span class="mini g">綠 ${d.g}</span>`:"",
+                   d.y?`<span class="mini y">黃 ${d.y}</span>`:"",
+                   d.r?`<span class="mini r">紅 ${d.r}</span>`:""].join("") || "—";
+    h += `<tr>
+      <td>${d.driver}</td>
+      <td><span class="linky" onclick="openTruck('${d.code}')">${d.truck}</span></td>
+      <td>${d.n} 筆 ${d.boxes} 櫃</td>
+      <td><span class="linky" style="text-decoration:none" onclick="gotoAudit('${d.code}')">${audit}</span></td>
+      <td>${ivHtml}</td>
+      <td>${fmtDur(dur)}</td>
+    </tr>`;
+  }
+  el.innerHTML = h + `</tbody></table></div>`;
+}
+function gotoAudit(code){
+  document.getElementById("q").value = code;
+  setView("audit");
+  render();
 }
 async function getTrucks(date){
   if(!truckCache[date]) truckCache[date] = (await api({action:"get_trucks",token,date})).trucks;
@@ -434,7 +513,7 @@ async function openTruck(code){
   }else{
     b = `<div class="note">${t.truck_label||""}　司機 ${t.driver||"？"}</div>`;
     if(t.trips.length){
-      b += `<div class="sec-title">運行表（${t.trips.length} 班）</div><div class="tbl-wrap"><table><thead><tr><th>班次</th><th>名稱</th><th>起站</th><th>迄站</th><th>離站</th><th>進站</th><th>櫃號</th></tr></thead><tbody>`;
+      b += `<div class="sec-title">表定班次（${t.trips.length} 班）</div><div class="tbl-wrap"><table><thead><tr><th>班次</th><th>名稱</th><th>起站</th><th>迄站</th><th>離站</th><th>進站</th><th>櫃號</th></tr></thead><tbody>`;
       for(const p of t.trips){
         const z = ZONE_CODES.some(c=>p.from.startsWith(c)||p.to.startsWith(c));
         b += `<tr class="${z?"zone":""}"><td>${p.trip_code}</td><td>${p.trip_name}</td><td>${p.from}</td><td>${p.to}</td><td>${p.depart}</td><td>${p.arrive}</td><td>${p.container}</td></tr>`;
@@ -442,7 +521,7 @@ async function openTruck(code){
       b += `</tbody></table></div>`;
     }
     if(t.gates.length){
-      b += `<div class="sec-title">光罩軌跡（${t.gates.length} 筆）</div><div class="tbl-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>時間</th><th>通過站</th><th>種類</th><th>櫃號</th><th>班次</th><th>類型</th></tr></thead><tbody>`;
+      b += `<div class="sec-title">實際進出（${t.gates.length} 筆）</div><div class="tbl-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>時間</th><th>通過站</th><th>種類</th><th>櫃號</th><th>班次</th><th>類型</th></tr></thead><tbody>`;
       for(const e of t.gates){
         const z = ZONE_CODES.some(c=>e.station.startsWith(c));
         const tag = e.kind==="進站"?"in":(e.kind==="離站"?"out":"mv");
