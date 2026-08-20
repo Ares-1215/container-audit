@@ -594,7 +594,7 @@ async function exportExcel(){
   const now = new Date();
   const aoa1 = [
     ["彰化轉運中心 移櫃確認稽核報告"],
-    [`查核日期 ${date}｜場區：彰化/秀水/伸港｜產出 ${String(now.getMonth()+1).padStart(2,"0")}/${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`],
+    [`查核日期 ${date}｜場區：彰化/秀水｜產出 ${String(now.getMonth()+1).padStart(2,"0")}/${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`],
     [],
     ["移櫃確認(筆)","比對櫃次","不重複櫃號","✓ 正常","⚠ 待複判","✕ 查無紀錄"],
     [s.confirms??cur.confirms.length, s.items??cur.items.length, s.containers??"—", s.green??0, s.yellow??0, s.red??0],
