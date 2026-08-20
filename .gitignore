@@ -1,3 +1,4 @@
 tools/config.local.json
 tools/run_*.json
+tools/*.log
 __pycache__/

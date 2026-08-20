@@ -3,93 +3,210 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="彰化轉運中心移櫃確認稽核看板：交叉比對光罩與拆封紀錄，查核移櫃確認櫃號。">
 <title>移櫃確認稽核</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📦</text></svg>">
 <style>
 :root{
-  --bg:#f4f6f9; --card:#ffffff; --ink:#1c2430; --ink2:#5a6a7e; --muted:#8a97a8;
-  --line:#dde4ec; --accent:#0d6efd; --accent-ink:#ffffff;
-  --good:#0ca30c; --good-text:#006300; --warn:#fab219; --warn-text:#7a5200; --crit:#d03b3b; --crit-text:#a11f1f;
-  --good-bg:#e6f6e6; --warn-bg:#fdf3d9; --crit-bg:#fbe5e5;
-  --chip-ink:#1c2430; --shadow:0 1px 3px rgba(16,24,40,.08),0 1px 2px rgba(16,24,40,.06);
+  --bg:#f2f5f9;
+  --card:#ffffff;
+  --ink:#17212e; --ink2:#4f6076; --muted:#8493a8;
+  --line:#dee5ee; --line2:#edf1f6;
+  --accent:#0f766e; --accent-hi:#0c6058; --accent-soft:#dcefec; --accent-ink:#ffffff;
+  --good:#2f9e5f; --good-text:#1d6b40; --good-bg:#e7f5ec;
+  --warn:#dfa32b; --warn-text:#8a5a08; --warn-bg:#fcf3dd;
+  --crit:#d64545; --crit-text:#a32222; --crit-bg:#fbe9e9;
+  --chip-ink:#1c2430;
+  --shadow:0 1px 2px rgba(23,33,46,.05),0 2px 8px rgba(23,33,46,.06);
+  --shadow-lift:0 6px 18px rgba(23,33,46,.12);
+  --mono:"Cascadia Mono",Consolas,"SF Mono",ui-monospace,Menlo,monospace;
+  --grain-opacity:.035;
 }
 [data-theme="dark"]{
-  --bg:#10161f; --card:#1a222e; --ink:#e6ecf4; --ink2:#a8b6c8; --muted:#748296;
-  --line:#2a3543; --accent:#4d94ff; --accent-ink:#0b1220;
-  --good:#0ca30c; --good-text:#5ed35e; --warn:#fab219; --warn-text:#ffd15e; --crit:#e05252; --crit-text:#ff9b9b;
-  --good-bg:#12301a; --warn-bg:#33290e; --crit-bg:#3a1717;
-  --chip-ink:#e6ecf4; --shadow:0 1px 3px rgba(0,0,0,.4);
+  --bg:#0c121b;
+  --card:#151d29;
+  --ink:#e4eaf3; --ink2:#9fb0c5; --muted:#6d7d93;
+  --line:#263243; --line2:#1b2634;
+  --accent:#23b5a5; --accent-hi:#2cc9b7; --accent-soft:#12302c; --accent-ink:#06231f;
+  --good:#3ec573; --good-text:#7fdba1; --good-bg:#132b1c;
+  --warn:#e3b23c; --warn-text:#f2ca74; --warn-bg:#30250f;
+  --crit:#e46262; --crit-text:#ffa3a3; --crit-bg:#371818;
+  --chip-ink:#e4eaf3;
+  --shadow:0 1px 2px rgba(0,0,0,.45),0 2px 10px rgba(0,0,0,.3);
+  --shadow-lift:0 8px 22px rgba(0,0,0,.5);
+  --grain-opacity:.06;
 }
 *{box-sizing:border-box}
-body{margin:0;font-family:"Segoe UI","Microsoft JhengHei","微軟正黑體",sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.55}
-header{display:flex;align-items:center;gap:12px;padding:14px 20px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20;flex-wrap:wrap}
-header h1{font-size:1.15rem;margin:0;font-weight:700}
+html{scroll-behavior:smooth}
+::selection{background:var(--accent-soft);color:var(--ink)}
+body{
+  margin:0;
+  font-family:"Segoe UI Variable Text","Segoe UI","Microsoft JhengHei","微軟正黑體",sans-serif;
+  background:var(--bg);
+  background-image:radial-gradient(1100px 480px at 50% -12%,color-mix(in srgb,var(--accent) 5%,var(--bg)) 0%,transparent 62%);
+  background-attachment:fixed;
+  color:var(--ink);font-size:15px;line-height:1.55;
+  font-variant-numeric:tabular-nums;
+  -webkit-font-smoothing:antialiased;
+}
+body::after{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:1;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  opacity:var(--grain-opacity);
+}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+header{
+  display:flex;align-items:center;gap:12px;padding:12px 20px;
+  background:color-mix(in srgb,var(--card) 85%,transparent);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20;flex-wrap:wrap;
+}
+header h1{font-size:1.12rem;margin:0;font-weight:700;letter-spacing:-.01em}
 header .sub{color:var(--muted);font-size:.8rem}
+.mark{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:30px;height:30px;border-radius:9px;flex:none;
+  background:var(--accent-soft);color:var(--accent);
+}
+.mark svg{display:block}
 .spacer{flex:1}
-button,select,input[type=text],input[type=password]{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 12px}
+button,select,input[type=text],input[type=password]{
+  font:inherit;color:var(--ink);background:var(--card);
+  border:1px solid var(--line);border-radius:9px;padding:7px 13px;
+  transition:border-color .18s,background-color .18s,color .18s,box-shadow .18s,transform .12s;
+}
+input[type=text]:focus,input[type=password]:focus,select:focus{
+  border-color:var(--accent);outline:none;
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent);
+}
 button{cursor:pointer}
+button:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}
+button:active{transform:translateY(1px)}
 button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+button.primary:hover{background:var(--accent-hi);border-color:var(--accent-hi)}
 button.ghost{background:transparent}
+button.ghost:hover{background:var(--line2)}
 main{max-width:1180px;margin:0 auto;padding:18px 16px 60px}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;box-shadow:var(--shadow)}
-.card .k{font-size:.78rem;color:var(--ink2)}
-.card .v{font-size:1.7rem;font-weight:700;letter-spacing:.5px}
-.card .v small{font-size:.85rem;font-weight:400;color:var(--muted)}
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:14px;
+  padding:13px 17px;box-shadow:var(--shadow);
+  transition:transform .18s,box-shadow .18s;
+}
+.card:hover{transform:translateY(-1px);box-shadow:var(--shadow-lift)}
+.card .k{font-size:.76rem;color:var(--ink2);letter-spacing:.04em}
+.card .v{font-family:var(--mono);font-size:1.7rem;font-weight:600;letter-spacing:-.02em;margin-top:2px}
+.card .v small{font-family:"Segoe UI Variable Text","Segoe UI","Microsoft JhengHei",sans-serif;font-size:.82rem;font-weight:400;color:var(--muted);letter-spacing:0}
+.card.good{background:var(--good-bg);border-color:color-mix(in srgb,var(--good) 40%,var(--line))}
+.card.warn{background:var(--warn-bg);border-color:color-mix(in srgb,var(--warn) 40%,var(--line))}
+.card.crit{background:var(--crit-bg);border-color:color-mix(in srgb,var(--crit) 40%,var(--line))}
 .card.good .v{color:var(--good-text)} .card.warn .v{color:var(--warn-text)} .card.crit .v{color:var(--crit-text)}
 .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0 16px}
-.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.seg button{border:none;border-radius:0;padding:6px 12px;background:var(--card)}
+.seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--card)}
+.seg button{border:none;border-radius:0;padding:7px 13px;background:transparent}
+.seg button:hover{background:var(--line2)}
 .seg button.on{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.seg button.on:hover{background:var(--accent)}
 .truckGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
-.truckCard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;box-shadow:var(--shadow);cursor:pointer}
-.truckCard:hover{border-color:var(--accent)}
-.truckCard .tc{font-size:1.1rem;font-weight:700}
+.truckCard{
+  background:var(--card);border:1px solid var(--line);border-radius:14px;
+  padding:13px 17px;box-shadow:var(--shadow);cursor:pointer;
+  transition:transform .18s,box-shadow .18s,border-color .18s;
+}
+.truckCard:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:var(--shadow-lift)}
+.truckCard:active{transform:translateY(0)}
+.truckCard .tc{font-family:var(--mono);font-size:1.05rem;font-weight:600}
 .truckCard .td{color:var(--ink2);font-size:.83rem;margin-top:2px}
 .truckCard .tm{color:var(--muted);font-size:.76rem;margin-top:6px}
-.linky{cursor:pointer;color:var(--accent);text-decoration:underline;text-underline-offset:2px}
+.linky{cursor:pointer;color:var(--accent);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px;transition:color .15s}
+.linky:hover{color:var(--accent-hi)}
 .tag.mv{background:var(--warn-bg);color:var(--warn-text)}
-.confirm{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
-.confirm .head{display:flex;gap:14px;flex-wrap:wrap;align-items:baseline;padding:10px 16px;border-bottom:1px solid var(--line);font-size:.86rem;color:var(--ink2)}
-.confirm .head b{color:var(--ink);font-size:.95rem}
+.confirm{
+  background:var(--card);border:1px solid var(--line);border-radius:14px;
+  box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden;
+}
+.confirm .head{
+  display:flex;gap:14px;flex-wrap:wrap;align-items:baseline;padding:10px 16px;
+  border-bottom:1px solid var(--line2);font-size:.85rem;color:var(--ink2);
+  background:color-mix(in srgb,var(--bg) 45%,var(--card));
+}
+.confirm .head b{color:var(--ink);font-size:.94rem;font-weight:600}
 .confirm .chips{padding:12px 16px;display:flex;flex-wrap:wrap;gap:8px}
-.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;border:1.5px solid;cursor:pointer;font-weight:600;font-size:.9rem;color:var(--chip-ink);background:var(--card)}
-.chip .ico{font-size:.8rem}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;
+  border:1.5px solid;cursor:pointer;font-weight:600;font-size:.86rem;
+  font-family:var(--mono);letter-spacing:.02em;
+  color:var(--chip-ink);background:var(--card);
+  transition:transform .15s,box-shadow .15s;
+}
+.chip .ico{font-size:.78rem}
 .chip.green{background:var(--good-bg);border-color:var(--good)}
 .chip.yellow{background:var(--warn-bg);border-color:var(--warn)}
 .chip.red{background:var(--crit-bg);border-color:var(--crit)}
-.chip:hover{filter:brightness(.96)}
-.empty{color:var(--muted);text-align:center;padding:40px 0}
-dialog{border:none;border-radius:14px;max-width:760px;width:calc(100vw - 32px);padding:0;background:var(--card);color:var(--ink);box-shadow:0 10px 40px rgba(0,0,0,.35)}
-dialog::backdrop{background:rgba(10,15,22,.55)}
+.chip:hover{transform:translateY(-1px);box-shadow:var(--shadow)}
+.chip:active{transform:translateY(0) scale(.97)}
+.empty{color:var(--muted);text-align:center;padding:48px 0;font-size:.92rem}
+.empty .ei{font-size:1.9rem;margin-bottom:8px;opacity:.75}
+.skel{position:relative;overflow:hidden;background:var(--line2);border-radius:14px;margin-bottom:12px}
+.skel::after{
+  content:"";position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--card) 65%,transparent),transparent);
+  animation:shimmer 1.3s infinite;
+}
+.skel-card{height:110px}
+@keyframes shimmer{to{transform:translateX(100%)}}
+dialog{
+  border:none;border-radius:16px;max-width:760px;width:calc(100vw - 32px);padding:0;
+  background:var(--card);color:var(--ink);
+  box-shadow:0 18px 50px rgba(5,10,18,.4);
+}
+dialog[open]{animation:dlgIn .22s cubic-bezier(.2,.9,.3,1)}
+@keyframes dlgIn{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:none}}
+dialog::backdrop{background:rgba(8,13,20,.5);backdrop-filter:blur(3px)}
 .dlg-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}
-.dlg-head h2{margin:0;font-size:1.05rem}
-.dlg-body{padding:14px 18px;max-height:70vh;overflow:auto}
-.verdict-band{border-radius:10px;padding:10px 14px;margin-bottom:12px;font-weight:600;display:flex;gap:8px;align-items:flex-start}
+.dlg-head h2{margin:0;font-size:1.05rem;letter-spacing:-.01em}
+.dlg-body{padding:14px 18px;max-height:72vh;overflow:auto}
+.verdict-band{border-radius:11px;padding:10px 14px;margin-bottom:12px;font-weight:600;display:flex;gap:8px;align-items:flex-start}
 .verdict-band.green{background:var(--good-bg);color:var(--good-text)}
 .verdict-band.yellow{background:var(--warn-bg);color:var(--warn-text)}
 .verdict-band.red{background:var(--crit-bg);color:var(--crit-text)}
-.sec-title{font-size:.82rem;color:var(--muted);margin:14px 0 6px;font-weight:700;letter-spacing:.5px}
+.sec-title{font-size:.78rem;color:var(--muted);margin:16px 0 6px;font-weight:700;letter-spacing:.07em}
 table{border-collapse:collapse;width:100%;font-size:.84rem}
-.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:11px}
 th,td{padding:6px 10px;text-align:left;white-space:nowrap}
-thead th{background:var(--bg);color:var(--ink2);font-weight:600;position:sticky;top:0}
-tbody tr{border-top:1px solid var(--line)}
-tr.zone{background:var(--good-bg)}
+thead th{
+  background:color-mix(in srgb,var(--bg) 70%,var(--card));color:var(--muted);
+  font-weight:600;font-size:.76rem;letter-spacing:.05em;position:sticky;top:0;
+}
+tbody tr{border-top:1px solid var(--line2);transition:background-color .12s}
+tbody tr:hover{background:var(--line2)}
+tr.zone,tbody tr.zone:hover{background:var(--good-bg)}
 tr.zone td:first-child{font-weight:700}
 .tag{display:inline-block;padding:1px 8px;border-radius:6px;font-size:.76rem;font-weight:600}
 .tag.in{background:var(--good-bg);color:var(--good-text)}
 .tag.out{background:var(--crit-bg);color:var(--crit-text)}
-#gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:50}
-#gate .box{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:34px 38px;box-shadow:var(--shadow);text-align:center;max-width:320px}
-#gate h1{margin:0 0 6px;font-size:1.2rem}
+#gate{position:fixed;inset:0;background:var(--bg);background-image:radial-gradient(900px 480px at 50% -10%,color-mix(in srgb,var(--accent) 7%,var(--bg)) 0%,transparent 60%);display:flex;align-items:center;justify-content:center;z-index:50}
+#gate .box{
+  background:var(--card);border:1px solid var(--line);border-radius:20px;
+  padding:38px 40px;box-shadow:var(--shadow-lift);text-align:center;max-width:330px;
+}
+#gate .mark{width:44px;height:44px;border-radius:13px;margin-bottom:14px}
+#gate h1{margin:0 0 6px;font-size:1.2rem;letter-spacing:-.01em}
 #gate p{color:var(--muted);font-size:.85rem;margin:0 0 18px}
-#gate input{width:100%;text-align:center;font-size:1.2rem;letter-spacing:6px;margin-bottom:12px}
+#gate input{width:100%;text-align:center;font-family:var(--mono);font-size:1.25rem;letter-spacing:8px;margin-bottom:12px}
 #gate button{width:100%}
 #gate .err{color:var(--crit-text);font-size:.82rem;min-height:1.2em;margin-top:8px}
 .note{color:var(--muted);font-size:.78rem;margin-top:4px}
+.tbl-wrap::-webkit-scrollbar,.dlg-body::-webkit-scrollbar{width:9px;height:9px}
+.tbl-wrap::-webkit-scrollbar-thumb,.dlg-body::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px}
+.tbl-wrap::-webkit-scrollbar-thumb:hover,.dlg-body::-webkit-scrollbar-thumb:hover{background:var(--muted)}
 @media (max-width:640px){
   header{padding:10px 12px} main{padding:12px 10px 40px}
   .confirm .head{gap:8px;font-size:.8rem}
+}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important}
+  html{scroll-behavior:auto}
 }
 </style>
 </head>
@@ -97,6 +214,7 @@ tr.zone td:first-child{font-weight:700}
 
 <div id="gate">
   <div class="box">
+    <span class="mark" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg></span>
     <h1>移櫃確認稽核</h1>
     <p>彰化轉運中心｜請輸入通行碼</p>
     <input id="pw" type="password" inputmode="numeric" maxlength="8" autofocus>
@@ -106,7 +224,8 @@ tr.zone td:first-child{font-weight:700}
 </div>
 
 <header style="display:none" id="hdr">
-  <h1>🔍 移櫃確認稽核</h1>
+  <span class="mark" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg></span>
+  <h1>移櫃確認稽核</h1>
   <span class="sub">移櫃站 4106彰化＋4150秀水</span>
   <div class="spacer"></div>
   <div class="seg" id="viewSeg">
@@ -128,13 +247,13 @@ tr.zone td:first-child{font-weight:700}
       <button data-f="yellow" onclick="setFilter('yellow',this)">⚠ 待複判</button>
       <button data-f="red" onclick="setFilter('red',this)">✕ 查無紀錄</button>
     </div>
-    <input type="text" id="q" placeholder="搜尋櫃號／司機／確認人員／車頭" style="flex:1;min-width:200px" oninput="render()">
+    <input type="text" id="q" placeholder="搜尋櫃號／人員／車頭" style="flex:1;min-width:200px" oninput="render()">
     <span class="note" id="runInfo"></span>
   </div>
   <div id="list"></div>
  </div>
  <div id="truckView" style="display:none">
-  <div class="note" style="margin:6px 0 12px" id="truckNote">當日移櫃確認出現的車頭運行表與光罩軌跡（點卡片看明細）</div>
+  <div class="note" style="margin:6px 0 12px" id="truckNote">點卡片看運行表與光罩軌跡</div>
   <div class="truckGrid" id="truckGrid"></div>
  </div>
 </main>
@@ -151,6 +270,7 @@ tr.zone td:first-child{font-weight:700}
 <script>
 const API = "https://hmqnlovyzlvvnkqmfwtt.supabase.co/functions/v1/caudit";
 const V = {green:{ico:"✓",label:"正常"},yellow:{ico:"⚠",label:"待複判"},red:{ico:"✕",label:"查無紀錄"}};
+const SKEL = `<div class="skel skel-card"></div><div class="skel skel-card"></div><div class="skel skel-card"></div>`;
 let token = localStorage.getItem("ca_token") || "";
 let runs = [], cur = null, filter = "all";
 
@@ -178,10 +298,10 @@ function enter(){
   const sel = document.getElementById("dateSel");
   sel.innerHTML = runs.map(r=>`<option value="${r.query_date}">${r.query_date}（綠${r.summary.green??"?"} 黃${r.summary.yellow??"?"} 紅${r.summary.red??"?"}）</option>`).join("");
   if(runs.length) loadRun(runs[0].query_date);
-  else document.getElementById("list").innerHTML = `<div class="empty">還沒有稽核資料——請在公司電腦執行查核腳本</div>`;
+  else document.getElementById("list").innerHTML = `<div class="empty"><div class="ei">📭</div>還沒有稽核資料</div>`;
 }
 async function loadRun(date){
-  document.getElementById("list").innerHTML = `<div class="empty">載入中…</div>`;
+  document.getElementById("list").innerHTML = SKEL;
   try{
     cur = await api({action:"get_run",token,date});
     cur.itemsByConfirm = {};
@@ -232,7 +352,7 @@ function render(){
            <span class="ico">${V[i.verdict].ico}</span>${i.container_no}</span>`).join("")}
       </div></div>`;
   }
-  document.getElementById("list").innerHTML = html || `<div class="empty">沒有符合條件的資料</div>`;
+  document.getElementById("list").innerHTML = html || `<div class="empty"><div class="ei">🔎</div>沒有符合條件的資料</div>`;
 }
 function openItem(id){
   const it = cur.items.find(x=>x.id===id);
@@ -240,10 +360,10 @@ function openItem(id){
   document.getElementById("dlgTitle").textContent = `櫃號 ${it.container_no}`;
   const ev = it.evidence || {};
   let b = `<div class="verdict-band ${it.verdict}"><span>${V[it.verdict].ico}</span><span>${V[it.verdict].label}｜${it.reason||""}</span></div>
-    <div class="note">此確認：${cf.confirm_staff} 於 ${cf.confirm_time_raw} 確認（司機 ${cf.driver}／車頭 ${cf.truck}）</div>`;
+    <div class="note">${cf.confirm_staff} ${cf.confirm_time_raw} 確認｜司機 ${cf.driver}｜車頭 ${cf.truck}</div>`;
   const ivs = ev.intervals || [];
   if(ivs.length){
-    b += `<div class="sec-title">在站區間（彰化/秀水/伸港）</div><div class="tbl-wrap"><table><thead><tr><th>站所</th><th>進站</th><th>離站</th></tr></thead><tbody>`;
+    b += `<div class="sec-title">在站區間</div><div class="tbl-wrap"><table><thead><tr><th>站所</th><th>進站</th><th>離站</th></tr></thead><tbody>`;
     const ZN = {"4106":"4106 彰化","4150":"4150 秀水","4108":"4108 伸港"};
     for(const [s,e,st] of ivs)
       b += `<tr><td>${ZN[st]||st}</td><td>${fmtTs(s)}</td><td>${e?fmtTs(e):"（未離站）"}</td></tr>`;
@@ -251,14 +371,14 @@ function openItem(id){
   }
   const un = (ev.unseal||[]).filter(u=>u.zone_hit);
   if(un.length){
-    b += `<div class="sec-title">拆封櫃紀錄（含彰/秀）</div><div class="tbl-wrap"><table><thead><tr><th>行駛日</th><th>班次</th><th>起→迄</th><th>離站</th><th>進站</th></tr></thead><tbody>`;
+    b += `<div class="sec-title">拆封櫃紀錄</div><div class="tbl-wrap"><table><thead><tr><th>行駛日</th><th>班次</th><th>起→迄</th><th>離站</th><th>進站</th></tr></thead><tbody>`;
     for(const u of un)
       b += `<tr><td>${u.day.slice(4,6)}/${u.day.slice(6,8)}</td><td>${u.trip}</td><td>${u.from}→${u.to}</td><td>${u.depart||""}</td><td>${u.arrive||""}</td></tr>`;
     b += `</tbody></table></div>`;
   }
   const ge = ev.gate_events || [];
   if(ge.length){
-    b += `<div class="sec-title">光罩軌跡（回溯期全站，綠底＝彰化/秀水/伸港）</div><div class="tbl-wrap" style="max-height:300px;overflow-y:auto"><table><thead><tr><th>時間</th><th>通過站</th><th>進離</th><th>班次</th><th>車頭/司機</th><th>光罩</th></tr></thead><tbody>`;
+    b += `<div class="sec-title">光罩軌跡（${ge.length} 筆）</div><div class="tbl-wrap" style="max-height:300px;overflow-y:auto"><table><thead><tr><th>時間</th><th>通過站</th><th>進離</th><th>班次</th><th>車頭/司機</th><th>光罩</th></tr></thead><tbody>`;
     for(const e of ge)
       b += `<tr class="${["4106","4150","4108"].includes(e.station_code)?"zone":""}">
         <td>${fmtTs(e.ts)}</td><td>${e.station}</td>
@@ -266,7 +386,7 @@ function openItem(id){
         <td>${e.trip}</td><td>${e.truck}／${e.driver}</td><td>${e.mask_type}</td></tr>`;
     b += `</tbody></table></div>`;
   }else{
-    b += `<div class="sec-title">光罩軌跡</div><div class="note">回溯期內完全沒有光罩紀錄</div>`;
+    b += `<div class="sec-title">光罩軌跡</div><div class="note">查無光罩紀錄</div>`;
   }
   document.getElementById("dlgBody").innerHTML = b;
   document.getElementById("dlg").showModal();
@@ -288,7 +408,7 @@ async function getTrucks(date){
 async function renderTrucks(){
   if(!cur) return;
   const g = document.getElementById("truckGrid");
-  g.innerHTML = `<div class="empty">載入中…</div>`;
+  g.innerHTML = `<div class="skel" style="height:96px"></div><div class="skel" style="height:96px"></div><div class="skel" style="height:96px"></div>`;
   try{
     const trucks = await getTrucks(cur.run.query_date);
     g.innerHTML = trucks.length ? trucks.map(t=>
@@ -296,7 +416,7 @@ async function renderTrucks(){
         <div class="tc">${t.truck_label||t.truck_code}</div>
         <div class="td">${t.driver||""}</div>
         <div class="tm">班次 ${t.trips.length}｜光罩 ${t.gates.length} 筆</div>
-      </div>`).join("") : `<div class="empty">此日期尚未抓車頭資料（重跑當日查核即可補上）</div>`;
+      </div>`).join("") : `<div class="empty"><div class="ei">🚛</div>此日期尚未抓車頭資料</div>`;
   }catch(e){ g.innerHTML = `<div class="empty">載入失敗：${e.message}</div>`; }
 }
 function openTruckByLabel(label){
@@ -310,7 +430,7 @@ async function openTruck(code){
   document.getElementById("dlgTitle").textContent = `車頭 ${code}｜${date}`;
   let b = "";
   if(!t){
-    b = `<div class="note">此日期沒有車頭 ${code} 的資料（只預抓當日移櫃確認出現的車頭；要查其他車頭請重跑當日查核）</div>`;
+    b = `<div class="note">此日期沒有車頭 ${code} 的資料</div>`;
   }else{
     b = `<div class="note">${t.truck_label||""}　司機 ${t.driver||"？"}</div>`;
     if(t.trips.length){
@@ -322,7 +442,7 @@ async function openTruck(code){
       b += `</tbody></table></div>`;
     }
     if(t.gates.length){
-      b += `<div class="sec-title">光罩軌跡（${t.gates.length} 筆，綠底＝彰化/秀水/伸港）</div><div class="tbl-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>時間</th><th>通過站</th><th>種類</th><th>櫃號</th><th>班次</th><th>類型</th></tr></thead><tbody>`;
+      b += `<div class="sec-title">光罩軌跡（${t.gates.length} 筆）</div><div class="tbl-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>時間</th><th>通過站</th><th>種類</th><th>櫃號</th><th>班次</th><th>類型</th></tr></thead><tbody>`;
       for(const e of t.gates){
         const z = ZONE_CODES.some(c=>e.station.startsWith(c));
         const tag = e.kind==="進站"?"in":(e.kind==="離站"?"out":"mv");
@@ -355,6 +475,10 @@ function exportCsv(){
   a.download = `移櫃稽核_${cur.run.query_date}.csv`;
   a.click();
 }
+/* 彈窗：點背景關閉 */
+document.getElementById("dlg").addEventListener("click",e=>{
+  if(e.target===e.currentTarget) e.currentTarget.close();
+});
 /* 主題 */
 const THEMES = ["auto","light","dark"];
 function applyTheme(t){
