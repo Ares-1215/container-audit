@@ -597,8 +597,8 @@ async function exportExcel(){
     {s:{r:0,c:0},e:{r:0,c:8}}, {s:{r:1,c:0},e:{r:1,c:8}}, {s:{r:6,c:0},e:{r:6,c:8}},
   ];
   ws1["!cols"] = [{wch:24},{wch:16},{wch:9},{wch:9},{wch:6},{wch:6},{wch:6},{wch:34},{wch:12}];
-  ws1["!rows"] = [{hpt:30},{hpt:18},{hpt:6},{hpt:22},{hpt:26},{hpt:6},{hpt:22},{hpt:22},
-                  ...dRows.map(d=>({hpt: Math.max(20, 15*String(d[7]).split("\n").length + 5)}))];
+  // 資料列不設固定列高：wrapText 內容換行時 Excel 會自動調整
+  ws1["!rows"] = [{hpt:30},{hpt:18},{hpt:6},{hpt:22},{hpt:26},{hpt:6},{hpt:22},{hpt:22}];
   put(ws1,0,0,ST.title); put(ws1,1,0,ST.sub); put(ws1,6,0,ST.sec);
   for(let c=0;c<6;c++) put(ws1,3,c,ST.head);
   const kpiInk = [null,null,null,INK.green,INK.yellow,INK.red];
@@ -633,7 +633,7 @@ async function exportExcel(){
   const ws2 = XLSX.utils.aoa_to_sheet(aoa2);
   ws2["!merges"] = [{s:{r:0,c:0},e:{r:0,c:8}}];
   ws2["!cols"] = [{wch:8},{wch:11},{wch:15},{wch:22},{wch:15},{wch:12},{wch:8},{wch:11},{wch:72}];
-  ws2["!rows"] = [{hpt:26},{hpt:22},...items.map(()=>({hpt:20}))];
+  ws2["!rows"] = [{hpt:26},{hpt:22}];
   ws2["!autofilter"] = {ref:`A2:I${items.length+2}`};
   put(ws2,0,0,ST.title);
   for(let c=0;c<9;c++) put(ws2,1,c,ST.head);
