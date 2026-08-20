@@ -575,6 +575,17 @@ async function exportExcel(){
   const INK  = {green:"1D6B40",yellow:"8A5A08",red:"A32222"};
   const kpiV = ink=>({font:{name:F,bold:true,sz:14,color:{rgb:ink||"17212E"}},alignment:{horizontal:"center",vertical:"center"},border});
   const put = (ws,r,c,style)=>{ const ad = XLSX.utils.encode_cell({r,c}); if(ws[ad]) ws[ad].s = style; };
+  // 依內容自動計算欄寬（中文算2單位、多行取最長行；超過上限靠換行+自動列高）
+  const fitCols = (rows, maxW=60, minW=6)=>{
+    const w = [];
+    for(const row of rows) row.forEach((c,i)=>{
+      for(const line of String(c??"").split("\n")){
+        let n = 0; for(const ch of line) n += ch.codePointAt(0) > 255 ? 2 : 1;
+        w[i] = Math.max(w[i]||0, n);
+      }
+    });
+    return w.map(n=>({wch: Math.min(Math.max(n+2, minW), maxW)}));
+  };
 
   /* ── 工作表1：總覽 ── */
   const dRows = drivers.map(d=>[d.driver, d.truck, d.n, d.boxes, d.g||0, d.y||0, d.r||0,
@@ -596,7 +607,8 @@ async function exportExcel(){
   ws1["!merges"] = [
     {s:{r:0,c:0},e:{r:0,c:8}}, {s:{r:1,c:0},e:{r:1,c:8}}, {s:{r:6,c:0},e:{r:6,c:8}},
   ];
-  ws1["!cols"] = [{wch:24},{wch:16},{wch:9},{wch:9},{wch:6},{wch:6},{wch:6},{wch:34},{wch:12}];
+  // 欄寬依內容計算（排除合併的標題/區段列，避免撐爆A欄）
+  ws1["!cols"] = fitCols([aoa1[3], aoa1[4], aoa1[7], ...dRows]);
   // 資料列不設固定列高：wrapText 內容換行時 Excel 會自動調整
   ws1["!rows"] = [{hpt:30},{hpt:18},{hpt:6},{hpt:22},{hpt:26},{hpt:6},{hpt:22},{hpt:22}];
   put(ws1,0,0,ST.title); put(ws1,1,0,ST.sub); put(ws1,6,0,ST.sec);
@@ -632,7 +644,7 @@ async function exportExcel(){
   ];
   const ws2 = XLSX.utils.aoa_to_sheet(aoa2);
   ws2["!merges"] = [{s:{r:0,c:0},e:{r:0,c:8}}];
-  ws2["!cols"] = [{wch:8},{wch:11},{wch:15},{wch:22},{wch:15},{wch:12},{wch:8},{wch:11},{wch:72}];
+  ws2["!cols"] = fitCols(aoa2.slice(1));
   ws2["!rows"] = [{hpt:26},{hpt:22}];
   ws2["!autofilter"] = {ref:`A2:I${items.length+2}`};
   put(ws2,0,0,ST.title);
