@@ -227,7 +227,7 @@ tr.zone td:first-child{font-weight:700}
     <button onclick="setView('trucks',this)">車頭</button>
   </div>
   <select id="dateSel" onchange="loadRun(this.value)"></select>
-  <button class="ghost" onclick="exportCsv()" title="匯出目前篩選結果">⬇ 匯出CSV</button>
+  <button class="ghost" onclick="exportExcel()" title="匯出目前日期的Excel報告">⬇ 匯出Excel</button>
   <button class="ghost" id="themeBtn" onclick="cycleTheme()">🌓</button>
 </header>
 
@@ -430,14 +430,8 @@ function fmtDur(mins){
   if(mins == null) return "—";
   return `${Math.floor(mins/60)} 時 ${mins%60} 分`;
 }
-async function renderDrivers(){
-  if(!cur) return;
-  const el = document.getElementById("driverTable");
-  el.innerHTML = `<div class="skel" style="height:120px"></div>`;
-  let trucks = [];
-  try{ trucks = await getTrucks(cur.run.query_date); }catch(e){}
-  const byTruck = Object.fromEntries(trucks.map(t=>[t.truck_code,t]));
-  // 依 司機+車頭 分組
+function computeDrivers(byTruck){
+  // 依 司機+車頭 分組，附車頭在場時段與停留合計
   const groups = {};
   for(const cf of cur.confirms){
     const code = (cf.truck||"").trim().split(/\s+/)[0];
@@ -448,19 +442,32 @@ async function renderDrivers(){
       groups[key][it.verdict==="green"?"g":it.verdict==="yellow"?"y":"r"]++;
   }
   const rows = Object.values(groups).sort((a,b)=>(b.r-a.r)||(b.y-a.y)||(b.boxes-a.boxes));
+  for(const d of rows){
+    const t = byTruck[d.code];
+    d.ivList = null; d.dur = null;
+    if(t){
+      const ivs = zoneIntervals(t.gates);
+      d.ivList = ivs.map(([a,b])=>`${a||"…"}～${b||"未離站"}`);
+      d.dur = ivs.reduce((s,[a,b])=>(a&&b)? s+(parseMD(b)-parseMD(a)) : s, 0);
+      if(!ivs.length) d.dur = null;
+    }
+  }
+  return rows;
+}
+async function renderDrivers(){
+  if(!cur) return;
+  const el = document.getElementById("driverTable");
+  el.innerHTML = `<div class="skel" style="height:120px"></div>`;
+  let trucks = [];
+  try{ trucks = await getTrucks(cur.run.query_date); }catch(e){}
+  const byTruck = Object.fromEntries(trucks.map(t=>[t.truck_code,t]));
+  const rows = computeDrivers(byTruck);
   if(!rows.length){ el.innerHTML = `<div class="empty">沒有資料</div>`; return; }
   let h = `<div class="tbl-wrap"><table><thead><tr><th>司機</th><th>車頭</th><th>回報</th><th>逐櫃查核</th><th>實際在場時段</th><th>停留合計</th></tr></thead><tbody>`;
   for(const d of rows){
-    const t = byTruck[d.code];
-    let ivHtml = "無車頭資料", dur = null;
-    if(t){
-      const ivs = zoneIntervals(t.gates);
-      if(!ivs.length) ivHtml = "當日無場區光罩";
-      else{
-        ivHtml = ivs.map(([a,b])=>`${a||"…"}～${b||"未離站"}`).join("<br>");
-        dur = ivs.reduce((s,[a,b])=>(a&&b)? s+(parseMD(b)-parseMD(a)) : s, 0);
-      }
-    }
+    const ivHtml = d.ivList === null ? "無車頭資料"
+                 : (d.ivList.length ? d.ivList.join("<br>") : "當日無場區光罩");
+    const dur = d.dur;
     const audit = [d.g?`<span class="mini g">綠 ${d.g}</span>`:"",
                    d.y?`<span class="mini y">黃 ${d.y}</span>`:"",
                    d.r?`<span class="mini r">紅 ${d.r}</span>`:""].join("") || "—";
@@ -533,26 +540,118 @@ async function openTruck(code){
   document.getElementById("dlgBody").innerHTML = b;
   document.getElementById("dlg").showModal();
 }
-function exportCsv(){
+/* Excel 報告匯出（xlsx-js-style，按需載入） */
+function ensureXLSX(){
+  if(window.XLSX) return Promise.resolve();
+  return new Promise((res,rej)=>{
+    const sc = document.createElement("script");
+    sc.src = "https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js";
+    sc.onload = res; sc.onerror = ()=>rej(new Error("Excel 元件載入失敗"));
+    document.head.appendChild(sc);
+  });
+}
+async function exportExcel(){
   if(!cur) return;
-  const rows = [["查詢日","移櫃日","車頭","司機","確認站","確認人員","確認時間","櫃號","燈號","判定理由"]];
-  const q = document.getElementById("q").value.trim().toLowerCase();
-  for(const cf of cur.confirms){
-    let items = cur.itemsByConfirm[cf.id] || [];
-    if(filter!=="all") items = items.filter(i=>i.verdict===filter);
-    if(q){
-      const hay = `${cf.driver} ${cf.confirm_staff} ${cf.truck}`.toLowerCase();
-      items = hay.includes(q) ? items : items.filter(i=>i.container_no.includes(q));
+  try{ await ensureXLSX(); }catch(e){ alert(e.message); return; }
+  const date = cur.run.query_date;
+  let trucks = [];
+  try{ trucks = await getTrucks(date); }catch(e){}
+  const byTruck = Object.fromEntries(trucks.map(t=>[t.truck_code,t]));
+  const drivers = computeDrivers(byTruck);
+  const s = cur.run.summary || {};
+
+  const F = "微軟正黑體";
+  const bd = {style:"thin", color:{rgb:"9FB0C5"}};
+  const border = {top:bd,bottom:bd,left:bd,right:bd};
+  const ST = {
+    title:{font:{name:F,bold:true,sz:16,color:{rgb:"FFFFFF"}},fill:{fgColor:{rgb:"1F4E79"}},alignment:{horizontal:"center",vertical:"center"}},
+    sub:  {font:{name:F,bold:true,sz:10,color:{rgb:"D8E2EE"}},fill:{fgColor:{rgb:"1F4E79"}},alignment:{horizontal:"center",vertical:"center"}},
+    sec:  {font:{name:F,bold:true,sz:12,color:{rgb:"1F4E79"}},alignment:{vertical:"center"}},
+    head: {font:{name:F,bold:true,sz:11,color:{rgb:"FFFFFF"}},fill:{fgColor:{rgb:"2F5597"}},alignment:{horizontal:"center",vertical:"center"},border},
+    cell: {font:{name:F,bold:true,sz:10.5},alignment:{horizontal:"center",vertical:"center",wrapText:true},border},
+    cellL:{font:{name:F,bold:true,sz:10.5},alignment:{horizontal:"left",vertical:"center",wrapText:true},border},
+  };
+  const FILL = {green:"E7F5EC",yellow:"FCF3DD",red:"FBE9E9"};
+  const INK  = {green:"1D6B40",yellow:"8A5A08",red:"A32222"};
+  const kpiV = ink=>({font:{name:F,bold:true,sz:14,color:{rgb:ink||"17212E"}},alignment:{horizontal:"center",vertical:"center"},border});
+  const put = (ws,r,c,style)=>{ const ad = XLSX.utils.encode_cell({r,c}); if(ws[ad]) ws[ad].s = style; };
+
+  /* ── 工作表1：總覽 ── */
+  const dRows = drivers.map(d=>[d.driver, d.truck, d.n, d.boxes, d.g||0, d.y||0, d.r||0,
+    d.ivList===null?"無車頭資料":(d.ivList.length?d.ivList.join("\n"):"當日無場區光罩"),
+    d.dur==null?"—":fmtDur(d.dur)]);
+  const now = new Date();
+  const aoa1 = [
+    ["彰化轉運中心 移櫃確認稽核報告"],
+    [`查核日期 ${date}｜場區：彰化/秀水/伸港｜產出 ${String(now.getMonth()+1).padStart(2,"0")}/${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`],
+    [],
+    ["移櫃確認(筆)","比對櫃次","不重複櫃號","✓ 正常","⚠ 待複判","✕ 查無紀錄"],
+    [s.confirms??cur.confirms.length, s.items??cur.items.length, s.containers??"—", s.green??0, s.yellow??0, s.red??0],
+    [],
+    ["司機彙總（依紅→黃→櫃數排序）"],
+    ["司機","車頭","回報筆數","回報櫃數","綠","黃","紅","實際在場時段","停留合計"],
+    ...dRows
+  ];
+  const ws1 = XLSX.utils.aoa_to_sheet(aoa1);
+  ws1["!merges"] = [
+    {s:{r:0,c:0},e:{r:0,c:8}}, {s:{r:1,c:0},e:{r:1,c:8}}, {s:{r:6,c:0},e:{r:6,c:8}},
+  ];
+  ws1["!cols"] = [{wch:24},{wch:16},{wch:9},{wch:9},{wch:6},{wch:6},{wch:6},{wch:34},{wch:12}];
+  ws1["!rows"] = [{hpt:30},{hpt:18},{hpt:6},{hpt:22},{hpt:26},{hpt:6},{hpt:22},{hpt:22},
+                  ...dRows.map(d=>({hpt: Math.max(20, 15*String(d[7]).split("\n").length + 5)}))];
+  put(ws1,0,0,ST.title); put(ws1,1,0,ST.sub); put(ws1,6,0,ST.sec);
+  for(let c=0;c<6;c++) put(ws1,3,c,ST.head);
+  const kpiInk = [null,null,null,INK.green,INK.yellow,INK.red];
+  for(let c=0;c<6;c++) put(ws1,4,c,kpiV(kpiInk[c]));
+  for(let c=0;c<9;c++) put(ws1,7,c,ST.head);
+  dRows.forEach((row,i)=>{
+    const d = drivers[i];
+    const fill = d.r? FILL.red : d.y? FILL.yellow : null;
+    for(let c=0;c<9;c++){
+      const base = (c===0||c===7) ? ST.cellL : ST.cell;
+      const st = JSON.parse(JSON.stringify(base));
+      if(fill) st.fill = {fgColor:{rgb:fill}};
+      if(c===4&&d.g) st.font.color = {rgb:INK.green};
+      if(c===5&&d.y) st.font.color = {rgb:INK.yellow};
+      if(c===6&&d.r) st.font.color = {rgb:INK.red};
+      put(ws1,8+i,c,st);
     }
-    for(const i of items)
-      rows.push([cur.run.query_date,cf.move_date,cf.truck,cf.driver,cf.confirm_station,
-                 cf.confirm_staff,cf.confirm_time_raw,i.container_no,V[i.verdict].label,i.reason||""]);
-  }
-  const csv = "﻿"+rows.map(r=>r.map(c=>`"${String(c??"").replace(/"/g,'""')}"`).join(",")).join("\r\n");
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
-  a.download = `移櫃稽核_${cur.run.query_date}.csv`;
-  a.click();
+  });
+
+  /* ── 工作表2：逐櫃明細 ── */
+  const items = [];
+  for(const cf of cur.confirms)
+    for(const it of (cur.itemsByConfirm[cf.id]||[]))
+      items.push([cf.move_date, cf.move_station, cf.truck, cf.driver, cf.confirm_staff,
+                  cf.confirm_time_raw, it.container_no, V[it.verdict].label, it.reason||"", it.verdict]);
+  items.sort((a,b)=>({"查無紀錄":0,"待複判":1,"正常":2}[a[7]]-{"查無紀錄":0,"待複判":1,"正常":2}[b[7]]));
+  const aoa2 = [
+    [`逐櫃明細（${date}）`],
+    ["移櫃日","移櫃站","車頭","司機","確認人員","確認時間","櫃號","燈號","判定理由"],
+    ...items.map(r=>r.slice(0,9))
+  ];
+  const ws2 = XLSX.utils.aoa_to_sheet(aoa2);
+  ws2["!merges"] = [{s:{r:0,c:0},e:{r:0,c:8}}];
+  ws2["!cols"] = [{wch:8},{wch:11},{wch:15},{wch:22},{wch:15},{wch:12},{wch:8},{wch:11},{wch:72}];
+  ws2["!rows"] = [{hpt:26},{hpt:22},...items.map(()=>({hpt:20}))];
+  ws2["!autofilter"] = {ref:`A2:I${items.length+2}`};
+  put(ws2,0,0,ST.title);
+  for(let c=0;c<9;c++) put(ws2,1,c,ST.head);
+  items.forEach((row,i)=>{
+    const v = row[9];
+    for(let c=0;c<9;c++){
+      const st = JSON.parse(JSON.stringify((c===3||c===8) ? ST.cellL : ST.cell));
+      st.fill = {fgColor:{rgb:FILL[v]}};
+      if(c===7) st.font.color = {rgb:INK[v]};
+      put(ws2,2+i,c,st);
+    }
+  });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws1, "總覽");
+  XLSX.utils.book_append_sheet(wb, ws2, "逐櫃明細");
+  wb.Workbook = {Names:[{Name:"_xlnm.Print_Titles", Sheet:1, Ref:"'逐櫃明細'!$1:$2"}]};
+  XLSX.writeFile(wb, `移櫃稽核報告_${date}.xlsx`);
 }
 /* 彈窗：點背景關閉 */
 document.getElementById("dlg").addEventListener("click",e=>{
