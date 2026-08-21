@@ -143,7 +143,8 @@ def fetch_gate_events(container: str, d_from: str, d_to: str):
         except ValueError:
             continue
         st_code = c[3].split()[0] if c[3] else ""
-        events.append({"ts": ts.isoformat(), "station": c[3], "station_code": st_code,
+        events.append({"ts": ts.isoformat(), "day": c[0].replace("/", ""),
+                       "station": c[3], "station_code": st_code,
                        "kind": c[4], "truck": c[5], "driver": c[7], "trip": c[8],
                        "mask_type": c[10]})
     events.sort(key=lambda e: e["ts"])
@@ -166,6 +167,31 @@ def fetch_unseal(container: str, day: str):
         rec["zone_hit"] = zone_hit
         out.append(rec)
     return out
+
+
+def parse_legs(rows):
+    """RPT 113 荷米斯APP-班次明細（27欄）→ 每趟班次：表定/實際時間、櫃號、備註。"""
+    out = []
+    for c in rows:
+        if len(c) < 20 or c[6] in ("班次序", ""):
+            continue
+        out.append({"day": c[0], "driver": c[4], "truck": c[5], "seq": c[6], "trip": c[7],
+                    "from": c[8], "plan_dep": c[9], "to": c[10], "plan_arr": c[11],
+                    "container": c[13], "act_dep": c[15], "act_arr": c[16], "note": c[17],
+                    "dep_abn": c[18] if len(c) > 18 else "", "arr_abn": c[19] if len(c) > 19 else ""})
+    return out
+
+
+def fetch_legs_by_truck(code: str, qdate: str):
+    _, rows = query_all_pages(113, "P1,P2,P3,P4,P5,",
+                              {"P1": qdate, "P2": code, "P3": " ", "P4": " ", "P5": " "})
+    return parse_legs(rows)
+
+
+def fetch_trips_by_container(cn: str, day: str):
+    _, rows = query_all_pages(113, "P1,P2,P3,P4,P5,",
+                              {"P1": day, "P2": " ", "P3": " ", "P4": " ", "P5": cn})
+    return parse_legs(rows)
 
 
 def fetch_truck_day(code: str, qdate: str):
@@ -205,6 +231,7 @@ def fetch_and_upload_trucks(confirms, qdate: str, qd_iso: str, dry_run: bool):
     trucks = []
     for i, code in enumerate(codes, 1):
         t = fetch_truck_day(code, qdate)
+        t["legs"] = fetch_legs_by_truck(code, qdate)   # RPT113 表定+實際+櫃號+備註
         t["truck_code"] = code
         if not t["truck_label"]:
             t["truck_label"] = next((cf["truck"] for cf in confirms
@@ -292,6 +319,25 @@ def main():
         zone_n = sum(1 for e in gate_cache[cn] if e["station_code"] in ZONE)
         print(f"  [{i}/{len(all_containers)}] 光罩 {cn}: {len(gate_cache[cn])} 筆(場區 {zone_n})")
 
+    # 載運班次（RPT113 依車廂代號）：只查「光罩有移動紀錄的行駛日 ∪ 確認日前後一天」，兼顧漏刷與查詢量
+    near = {(qd + timedelta(days=k)).strftime("%Y%m%d") for k in (-1, 0, 1)
+            if qd + timedelta(days=k) <= date.today()}
+    # RPT113 回應慢：只取「場區光罩的行駛日」∪ 近三日，並以 4 線程平行抓
+    from concurrent.futures import ThreadPoolExecutor
+    jobs = []
+    for cn in all_containers:
+        days = sorted({e["day"] for e in gate_cache[cn]
+                       if e.get("day") and e["station_code"] in ZONE} | near)
+        jobs += [(cn, d) for d in days]
+    print(f"載運班次查詢 {len(jobs)} 次（{len(all_containers)} 櫃，4 線程）...")
+    trips_cache = {cn: [] for cn in all_containers}
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        for (cn, d), recs in zip(jobs, ex.map(lambda j: fetch_trips_by_container(*j), jobs)):
+            trips_cache[cn] += recs
+    for cn in all_containers:
+        trips_cache[cn].sort(key=lambda r: (r["day"], r["act_dep"] or r["plan_dep"]))
+    print(f"載運班次完成：{sum(len(v) for v in trips_cache.values())} 趟")
+
     unseal_cache = {}
 
     def get_unseal(cn):
@@ -369,7 +415,8 @@ def main():
                     "gate_events": events[-60:],
                     "intervals": [[s.isoformat(), e.isoformat() if e else None, st]
                                   for s, e, st in ivs],
-                    "unseal": unseal[:30]}})
+                    "unseal": unseal[:30],
+                    "trips": trips_cache.get(cn, [])[:40]}})
         done = sum(1 for x in items)
         print(f"  比對進度 {done} 項", end="\r")
 

@@ -388,6 +388,17 @@ function openItem(id){
       b += `<tr><td>${u.day.slice(4,6)}/${u.day.slice(6,8)}</td><td>${u.trip}</td><td>${u.from}→${u.to}</td><td>${u.depart||""}</td><td>${u.arrive||""}</td></tr>`;
     b += `</tbody></table></div>`;
   }
+  const tr = ev.trips || [];
+  if(tr.length){
+    b += `<div class="sec-title">載運班次（${tr.length} 趟｜哪趟車、誰、幾點載了這個櫃）</div><div class="tbl-wrap" style="max-height:300px;overflow-y:auto"><table><thead><tr><th>行駛日</th><th>班次</th><th>司機／車頭</th><th>起站</th><th>迄站</th><th>預定離→進</th><th>實際離→進</th><th>備註</th></tr></thead><tbody>`;
+    for(const l of tr){
+      const z = ZONE_NAMES.some(n=>l.from===n||l.to===n);
+      const noGate = !l.act_dep && !l.act_arr;
+      b += `<tr class="${z?"zone":""}"><td>${l.day.slice(4,6)}/${l.day.slice(6,8)}</td><td>${l.trip}</td><td>${l.driver}／${l.truck}</td><td>${l.from}</td><td>${l.to}</td>
+        <td>${l.plan_dep}→${l.plan_arr}</td><td>${noGate?'<span class="tag mv">無光罩</span>':`${l.act_dep||"—"}→${l.act_arr||"—"}`}</td><td>${l.note||""}</td></tr>`;
+    }
+    b += `</tbody></table></div>`;
+  }
   const ge = ev.gate_events || [];
   if(ge.length){
     b += `<div class="sec-title">光罩軌跡（${ge.length} 筆）</div><div class="tbl-wrap" style="max-height:300px;overflow-y:auto"><table><thead><tr><th>時間</th><th>通過站</th><th>進離</th><th>班次</th><th>車頭/司機</th><th>光罩</th></tr></thead><tbody>`;
@@ -570,6 +581,7 @@ function openTruckByLabel(label){
   openTruck(label.trim().split(/\s+/)[0]);
 }
 const ZONE_CODES = ["4106","4150","4108"];
+const ZONE_NAMES = ["彰化","秀水","伸港"];
 async function openTruck(code){
   const date = cur.run.query_date;
   let t = null;
@@ -580,7 +592,19 @@ async function openTruck(code){
     b = `<div class="note">此日期沒有車頭 ${code} 的資料</div>`;
   }else{
     b = `<div class="note">${t.truck_label||""}　司機 ${t.driver||"？"}</div>`;
-    if(t.trips.length){
+    const legs = t.legs||[];
+    if(legs.length){
+      b += `<div class="sec-title">班次明細（${legs.length} 趟｜表定 vs 實際）</div><div class="tbl-wrap" style="max-height:420px;overflow-y:auto"><table><thead><tr><th>序</th><th>班次</th><th>起站</th><th>迄站</th><th>預定離</th><th>實際離</th><th>預定進</th><th>實際進</th><th>櫃號</th><th>備註</th></tr></thead><tbody>`;
+      for(const l of legs){
+        const z = ZONE_NAMES.some(n=>l.from===n||l.to===n);
+        const noGate = l.container && l.container!=="取消" && !l.act_dep && !l.act_arr;
+        b += `<tr class="${z?"zone":""}"><td>${l.seq}</td><td>${l.trip}</td><td>${l.from}</td><td>${l.to}</td>
+          <td>${l.plan_dep}</td><td>${l.act_dep||"—"}</td><td>${l.plan_arr}</td><td>${l.act_arr||"—"}</td>
+          <td>${l.container||""}${noGate?' <span class="tag mv">無光罩</span>':""}</td><td>${l.note||""}</td></tr>`;
+      }
+      b += `</tbody></table></div>`;
+    }
+    if(!legs.length && t.trips.length){
       b += `<div class="sec-title">表定班次（${t.trips.length} 班）</div><div class="tbl-wrap"><table><thead><tr><th>班次</th><th>名稱</th><th>起站</th><th>迄站</th><th>離站</th><th>進站</th><th>櫃號</th></tr></thead><tbody>`;
       for(const p of t.trips){
         const z = ZONE_CODES.some(c=>p.from.startsWith(c)||p.to.startsWith(c));
