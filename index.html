@@ -247,8 +247,20 @@ tr.zone td:first-child{font-weight:700}
   <div id="list"></div>
  </div>
  <div id="driverView" style="display:none">
-  <div class="note" style="margin:6px 0 12px">在場時段＝車頭光罩實際進出場區｜「…」「未離站」為不完整時段，不計入停留合計</div>
+  <div class="toolbar" style="margin:6px 0 12px">
+    <div class="seg" id="grpSeg">
+      <button class="on" onclick="setGroup('driver',this)">依外聘司機</button>
+      <button onclick="setGroup('staff',this)">依確認人員</button>
+    </div>
+    <span class="note" id="grpNote">在場時段＝車頭光罩實際進出場區｜「…」「未離站」為不完整時段，不計入停留合計</span>
+  </div>
   <div id="driverTable"></div>
+  <div class="note" style="margin-top:14px;line-height:1.9">
+    <b>名詞說明</b><br>
+    確認次數：確認人員在荷米斯APP按一次「移櫃確認」＝1 次，一次可含多個櫃號｜櫃數：各次確認回報的櫃號加總<br>
+    逐櫃查核：綠＝確認當下櫃子在場域內｜黃＝櫃子有到過場域但時間對不上，待複判｜紅＝回溯期內查無該櫃任何場域紀錄<br>
+    實際在場時段：車頭光罩實際進出彰化/秀水的時間（非表定班次）
+  </div>
  </div>
  <div id="truckView" style="display:none">
   <div class="note" style="margin:6px 0 12px" id="truckNote">點卡片看表定班次與實際進出</div>
@@ -436,13 +448,16 @@ function computeDrivers(byTruck){
   for(const cf of cur.confirms){
     const code = (cf.truck||"").trim().split(/\s+/)[0];
     const key = `${cf.driver}|${code}`;
-    (groups[key] ??= {driver:cf.driver, truck:cf.truck, code, n:0, boxes:0, g:0, y:0, r:0}).n++;
+    (groups[key] ??= {driver:cf.driver, truck:cf.truck, code, n:0, boxes:0, g:0, y:0, r:0, confirms:[]}).n++;
     groups[key].boxes += cf.box_count||0;
+    groups[key].confirms.push({time:cf.confirm_time_raw, staff:cf.confirm_staff, boxes:cf.box_count||0});
     for(const it of (cur.itemsByConfirm[cf.id]||[]))
       groups[key][it.verdict==="green"?"g":it.verdict==="yellow"?"y":"r"]++;
   }
   const rows = Object.values(groups).sort((a,b)=>(b.r-a.r)||(b.y-a.y)||(b.boxes-a.boxes));
   for(const d of rows){
+    d.confirms.sort((a,b)=>a.time.localeCompare(b.time));
+    d.detail = d.confirms.map(c=>`${c.time} ${c.staff} ${c.boxes}櫃`);
     const t = byTruck[d.code];
     d.ivList = null; d.dur = null;
     if(t){
@@ -461,29 +476,75 @@ async function renderDrivers(){
   let trucks = [];
   try{ trucks = await getTrucks(cur.run.query_date); }catch(e){}
   const byTruck = Object.fromEntries(trucks.map(t=>[t.truck_code,t]));
-  const rows = computeDrivers(byTruck);
-  if(!rows.length){ el.innerHTML = `<div class="empty">沒有資料</div>`; return; }
-  let h = `<div class="tbl-wrap"><table><thead><tr><th>司機</th><th>車頭</th><th>回報</th><th>逐櫃查核</th><th>實際在場時段</th><th>停留合計</th></tr></thead><tbody>`;
-  for(const d of rows){
-    const ivHtml = d.ivList === null ? "無車頭資料"
-                 : (d.ivList.length ? d.ivList.join("<br>") : "當日無場區光罩");
-    const dur = d.dur;
-    const audit = [d.g?`<span class="mini g">綠 ${d.g}</span>`:"",
-                   d.y?`<span class="mini y">黃 ${d.y}</span>`:"",
-                   d.r?`<span class="mini r">紅 ${d.r}</span>`:""].join("") || "—";
-    h += `<tr>
-      <td>${d.driver}</td>
-      <td><span class="linky" onclick="openTruck('${d.code}')">${d.truck}</span></td>
-      <td>${d.n} 筆 ${d.boxes} 櫃</td>
-      <td><span class="linky" style="text-decoration:none" onclick="gotoAudit('${d.code}')">${audit}</span></td>
-      <td>${ivHtml}</td>
-      <td>${fmtDur(dur)}</td>
-    </tr>`;
+  const minis = d => [d.g?`<span class="mini g">綠 ${d.g}</span>`:"",
+                      d.y?`<span class="mini y">黃 ${d.y}</span>`:"",
+                      d.r?`<span class="mini r">紅 ${d.r}</span>`:""].join("") || "—";
+  let h;
+  if(groupMode === "staff"){
+    const rows = computeStaff();
+    if(!rows.length){ el.innerHTML = `<div class="empty">沒有資料</div>`; return; }
+    h = `<div class="tbl-wrap"><table><thead><tr><th>確認人員</th><th>確認次數</th><th>櫃數</th><th>外聘司機（車頭）</th><th>確認明細</th><th>逐櫃查核</th></tr></thead><tbody>`;
+    for(const s of rows){
+      const drv = Object.values(s.drivers).map(v=>
+        `${v.driver}（<span class="linky" onclick="openTruck('${v.code}')">${v.code}</span>）×${v.n}`).join("<br>");
+      h += `<tr>
+        <td>${s.staff}</td><td>${s.n}</td><td>${s.boxes}</td>
+        <td>${drv}</td>
+        <td>${s.detail.join("<br>")}</td>
+        <td><span class="linky" style="text-decoration:none" onclick="gotoAudit('${s.staff}')">${minis(s)}</span></td>
+      </tr>`;
+    }
+  }else{
+    const rows = computeDrivers(byTruck);
+    if(!rows.length){ el.innerHTML = `<div class="empty">沒有資料</div>`; return; }
+    h = `<div class="tbl-wrap"><table><thead><tr><th>外聘司機</th><th>車頭</th><th>確認次數</th><th>櫃數</th><th>確認明細（時間・確認人員・櫃數）</th><th>逐櫃查核</th><th>實際在場時段</th><th>停留合計</th></tr></thead><tbody>`;
+    for(const d of rows){
+      const ivHtml = d.ivList === null ? "無車頭資料"
+                   : (d.ivList.length ? d.ivList.join("<br>") : "當日無場區光罩");
+      h += `<tr>
+        <td>${d.driver}</td>
+        <td><span class="linky" onclick="openTruck('${d.code}')">${d.truck}</span></td>
+        <td>${d.n}</td><td>${d.boxes}</td>
+        <td>${d.detail.join("<br>")}</td>
+        <td><span class="linky" style="text-decoration:none" onclick="gotoAudit('${d.code}')">${minis(d)}</span></td>
+        <td>${ivHtml}</td>
+        <td>${fmtDur(d.dur)}</td>
+      </tr>`;
+    }
   }
   el.innerHTML = h + `</tbody></table></div>`;
 }
-function gotoAudit(code){
-  document.getElementById("q").value = code;
+/* 依確認人員分組：誰在什麼時間叫了哪位外聘司機、幾櫃 */
+function computeStaff(){
+  const groups = {};
+  for(const cf of cur.confirms){
+    const g = (groups[cf.confirm_staff] ??= {staff:cf.confirm_staff, n:0, boxes:0, g:0, y:0, r:0, drivers:{}, confirms:[]});
+    g.n++; g.boxes += cf.box_count||0;
+    const code = (cf.truck||"").trim().split(/\s+/)[0];
+    const dk = `${cf.driver}|${code}`;
+    (g.drivers[dk] ??= {driver:cf.driver, code, n:0}).n++;
+    g.confirms.push({time:cf.confirm_time_raw, driver:cf.driver, code, boxes:cf.box_count||0});
+    for(const it of (cur.itemsByConfirm[cf.id]||[]))
+      g[it.verdict==="green"?"g":it.verdict==="yellow"?"y":"r"]++;
+  }
+  const rows = Object.values(groups).sort((a,b)=>(b.r-a.r)||(b.y-a.y)||(b.n-a.n));
+  for(const s of rows){
+    s.confirms.sort((a,b)=>a.time.localeCompare(b.time));
+    s.detail = s.confirms.map(c=>`${c.time} ${c.driver}（${c.code}）${c.boxes}櫃`);
+  }
+  return rows;
+}
+let groupMode = "driver";
+function setGroup(m,btn){
+  groupMode = m;
+  document.querySelectorAll("#grpSeg button").forEach(b=>b.classList.toggle("on",b===btn));
+  document.getElementById("grpNote").textContent = m==="staff"
+    ? "每列一位確認人員：按了幾次移櫃確認、共幾櫃、找了哪些外聘司機"
+    : "在場時段＝車頭光罩實際進出場區｜「…」「未離站」為不完整時段，不計入停留合計";
+  renderDrivers();
+}
+function gotoAudit(q){
+  document.getElementById("q").value = q;
   setView("audit");
   render();
 }
@@ -588,47 +649,76 @@ async function exportExcel(){
   };
 
   /* ── 工作表1：總覽 ── */
+  const staffRows = computeStaff();
   const dRows = drivers.map(d=>[d.driver, d.truck, d.n, d.boxes, d.g||0, d.y||0, d.r||0,
+    d.detail.join("\n"),
     d.ivList===null?"無車頭資料":(d.ivList.length?d.ivList.join("\n"):"當日無場區光罩"),
     d.dur==null?"—":fmtDur(d.dur)]);
-  const now = new Date();
-  const aoa1 = [
-    ["彰化轉運中心 移櫃確認稽核報告"],
-    [`查核日期 ${date}｜場區：彰化/秀水｜產出 ${String(now.getMonth()+1).padStart(2,"0")}/${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`],
-    [],
-    ["移櫃確認(筆)","比對櫃次","不重複櫃號","✓ 正常","⚠ 待複判","✕ 查無紀錄"],
-    [s.confirms??cur.confirms.length, s.items??cur.items.length, s.containers??"—", s.green??0, s.yellow??0, s.red??0],
-    [],
-    ["司機彙總（依紅→黃→櫃數排序）"],
-    ["司機","車頭","回報筆數","回報櫃數","綠","黃","紅","實際在場時段","停留合計"],
-    ...dRows
+  const sRows = staffRows.map(st=>[st.staff, st.n, st.boxes, st.g||0, st.y||0, st.r||0,
+    Object.values(st.drivers).map(v=>`${v.driver}（${v.code}）×${v.n}`).join("\n"),
+    st.detail.join("\n")]);
+  const NC = 10, LASTC = NC-1;
+  const now = new Date(), pad = n=>String(n).padStart(2,"0");
+  const GLOSS = [
+    "確認次數：確認人員在荷米斯APP按一次「移櫃確認」＝1 次，一次可含多個櫃號；櫃數＝各次確認回報的櫃號加總",
+    "逐櫃查核：綠＝確認當下櫃子在場域內｜黃＝櫃子有到過場域但時間對不上，待複判｜紅＝回溯期內查無該櫃任何場域紀錄",
+    "實際在場時段：車頭光罩實際進出彰化/秀水的時間（非表定班次）；「…」「未離站」為不完整時段，不計入停留合計",
   ];
+  const R = {};           // 各區段列號
+  const aoa1 = [];
+  const push = (row, key)=>{ if(key) R[key] = aoa1.length; aoa1.push(row); };
+  push(["彰化轉運中心 移櫃確認稽核報告"], "title");
+  push([`查核日期 ${date}｜場區：彰化/秀水｜產出 ${pad(now.getMonth()+1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`], "sub");
+  push([]);
+  push(["移櫃確認(次)","比對櫃次","不重複櫃號","✓ 正常","⚠ 待複判","✕ 查無紀錄"], "kpiH");
+  push([s.confirms??cur.confirms.length, s.items??cur.items.length, s.containers??"—", s.green??0, s.yellow??0, s.red??0], "kpiV");
+  push([]);
+  push(["外聘司機彙總（依紅→黃→櫃數排序）"], "sec1");
+  push(["外聘司機","車頭","確認次數","櫃數","綠","黃","紅","確認明細（時間・確認人員・櫃數）","實際在場時段","停留合計"], "head1");
+  R.d0 = aoa1.length; dRows.forEach(r=>aoa1.push(r));
+  push([]);
+  push(["確認人員彙總（誰在什麼時間叫了外聘司機）"], "sec2");
+  push(["確認人員","確認次數","櫃數","綠","黃","紅","外聘司機（車頭）×次數","確認明細（時間・司機・櫃數）"], "head2");
+  R.s0 = aoa1.length; sRows.forEach(r=>aoa1.push(r));
+  push([]);
+  push(["名詞說明"], "sec3");
+  R.g0 = aoa1.length; GLOSS.forEach(g=>aoa1.push([g]));
+
   const ws1 = XLSX.utils.aoa_to_sheet(aoa1);
-  ws1["!merges"] = [
-    {s:{r:0,c:0},e:{r:0,c:8}}, {s:{r:1,c:0},e:{r:1,c:8}}, {s:{r:6,c:0},e:{r:6,c:8}},
-  ];
-  // 欄寬依內容計算（排除合併的標題/區段列，避免撐爆A欄）
-  ws1["!cols"] = fitCols([aoa1[3], aoa1[4], aoa1[7], ...dRows]);
-  // 資料列不設固定列高：wrapText 內容換行時 Excel 會自動調整
-  ws1["!rows"] = [{hpt:30},{hpt:18},{hpt:6},{hpt:22},{hpt:26},{hpt:6},{hpt:22},{hpt:22}];
-  put(ws1,0,0,ST.title); put(ws1,1,0,ST.sub); put(ws1,6,0,ST.sec);
-  for(let c=0;c<6;c++) put(ws1,3,c,ST.head);
+  const full = r=>({s:{r,c:0},e:{r,c:LASTC}});
+  ws1["!merges"] = [full(R.title), full(R.sub), full(R.sec1), full(R.sec2), full(R.sec3),
+                    ...GLOSS.map((_,i)=>full(R.g0+i))];
+  // 欄寬依內容計算（排除合併列）
+  ws1["!cols"] = fitCols([aoa1[R.kpiH], aoa1[R.kpiV], aoa1[R.head1], ...dRows, aoa1[R.head2], ...sRows]);
+  // 只有設計列固定列高，資料列留給 Excel 依換行自動調整；名詞說明是合併格不會自動調，固定 2 行高
+  const rows1 = [];
+  const setH = (r,h)=>{ rows1[r] = {hpt:h}; };
+  setH(R.title,30); setH(R.sub,18); setH(R.title+2,6); setH(R.kpiH,22); setH(R.kpiV,26); setH(R.kpiV+1,6);
+  setH(R.sec1,22); setH(R.head1,22); setH(R.sec2-1,6); setH(R.sec2,22); setH(R.head2,22); setH(R.sec3-1,6); setH(R.sec3,22);
+  GLOSS.forEach((_,i)=>setH(R.g0+i,32));
+  ws1["!rows"] = rows1;
+
+  put(ws1,R.title,0,ST.title); put(ws1,R.sub,0,ST.sub);
+  put(ws1,R.sec1,0,ST.sec); put(ws1,R.sec2,0,ST.sec); put(ws1,R.sec3,0,ST.sec);
+  for(let c=0;c<6;c++) put(ws1,R.kpiH,c,ST.head);
   const kpiInk = [null,null,null,INK.green,INK.yellow,INK.red];
-  for(let c=0;c<6;c++) put(ws1,4,c,kpiV(kpiInk[c]));
-  for(let c=0;c<9;c++) put(ws1,7,c,ST.head);
-  dRows.forEach((row,i)=>{
-    const d = drivers[i];
+  for(let c=0;c<6;c++) put(ws1,R.kpiV,c,kpiV(kpiInk[c]));
+  for(let c=0;c<NC;c++) put(ws1,R.head1,c,ST.head);
+  for(let c=0;c<8;c++)  put(ws1,R.head2,c,ST.head);
+  const styleRow = (r, d, ncols, leftCols, gCol, yCol, rCol)=>{
     const fill = d.r? FILL.red : d.y? FILL.yellow : null;
-    for(let c=0;c<9;c++){
-      const base = (c===0||c===7) ? ST.cellL : ST.cell;
-      const st = JSON.parse(JSON.stringify(base));
+    for(let c=0;c<ncols;c++){
+      const st = JSON.parse(JSON.stringify(leftCols.includes(c) ? ST.cellL : ST.cell));
       if(fill) st.fill = {fgColor:{rgb:fill}};
-      if(c===4&&d.g) st.font.color = {rgb:INK.green};
-      if(c===5&&d.y) st.font.color = {rgb:INK.yellow};
-      if(c===6&&d.r) st.font.color = {rgb:INK.red};
-      put(ws1,8+i,c,st);
+      if(c===gCol&&d.g) st.font.color = {rgb:INK.green};
+      if(c===yCol&&d.y) st.font.color = {rgb:INK.yellow};
+      if(c===rCol&&d.r) st.font.color = {rgb:INK.red};
+      put(ws1,r,c,st);
     }
-  });
+  };
+  drivers.forEach((d,i)=>styleRow(R.d0+i, d, NC, [0,7,8], 4,5,6));
+  staffRows.forEach((st,i)=>styleRow(R.s0+i, st, 8, [0,6,7], 3,4,5));
+  GLOSS.forEach((_,i)=>put(ws1,R.g0+i,0,{font:{name:F,bold:true,sz:10,color:{rgb:"4F6076"}},alignment:{vertical:"center",wrapText:true}}));
 
   /* ── 工作表2：逐櫃明細 ── */
   const items = [];
