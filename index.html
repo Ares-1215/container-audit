@@ -228,6 +228,7 @@ tr.zone td:first-child{font-weight:700}
   </div>
   <select id="dateSel" onchange="loadRun(this.value)"></select>
   <button class="ghost" onclick="exportExcel()" title="匯出目前日期的Excel報告">⬇ 匯出Excel</button>
+  <button class="ghost" onclick="exportMonthly()" title="匯出整月彙總報告">⬇ 匯出月報</button>
   <button class="ghost" id="themeBtn" onclick="cycleTheme()">🌓</button>
 </header>
 
@@ -453,16 +454,16 @@ function fmtDur(mins){
   if(mins == null) return "—";
   return `${Math.floor(mins/60)} 時 ${mins%60} 分`;
 }
-function computeDrivers(byTruck){
-  // 依 司機+車頭 分組，附車頭在場時段與停留合計
+function computeDrivers(byTruck, data=cur){
+  // 依 司機+車頭 分組，附車頭在場時段與停留合計（data 可為跨日合併資料，供月報用）
   const groups = {};
-  for(const cf of cur.confirms){
+  for(const cf of data.confirms){
     const code = (cf.truck||"").trim().split(/\s+/)[0];
     const key = `${cf.driver}|${code}`;
     (groups[key] ??= {driver:cf.driver, truck:cf.truck, code, n:0, boxes:0, g:0, y:0, r:0, confirms:[]}).n++;
     groups[key].boxes += cf.box_count||0;
     groups[key].confirms.push({time:cf.confirm_time_raw, staff:cf.confirm_staff, boxes:cf.box_count||0});
-    for(const it of (cur.itemsByConfirm[cf.id]||[]))
+    for(const it of (data.itemsByConfirm[cf.id]||[]))
       groups[key][it.verdict==="green"?"g":it.verdict==="yellow"?"y":"r"]++;
   }
   const rows = Object.values(groups).sort((a,b)=>(b.r-a.r)||(b.y-a.y)||(b.boxes-a.boxes));
@@ -526,16 +527,16 @@ async function renderDrivers(){
   el.innerHTML = h + `</tbody></table></div>`;
 }
 /* 依確認人員分組：誰在什麼時間叫了哪位外聘司機、幾櫃 */
-function computeStaff(){
+function computeStaff(data=cur){
   const groups = {};
-  for(const cf of cur.confirms){
+  for(const cf of data.confirms){
     const g = (groups[cf.confirm_staff] ??= {staff:cf.confirm_staff, n:0, boxes:0, g:0, y:0, r:0, drivers:{}, confirms:[]});
     g.n++; g.boxes += cf.box_count||0;
     const code = (cf.truck||"").trim().split(/\s+/)[0];
     const dk = `${cf.driver}|${code}`;
     (g.drivers[dk] ??= {driver:cf.driver, code, n:0}).n++;
     g.confirms.push({time:cf.confirm_time_raw, driver:cf.driver, code, boxes:cf.box_count||0});
-    for(const it of (cur.itemsByConfirm[cf.id]||[]))
+    for(const it of (data.itemsByConfirm[cf.id]||[]))
       g[it.verdict==="green"?"g":it.verdict==="yellow"?"y":"r"]++;
   }
   const rows = Object.values(groups).sort((a,b)=>(b.r-a.r)||(b.y-a.y)||(b.n-a.n));
@@ -635,16 +636,15 @@ function ensureXLSX(){
     document.head.appendChild(sc);
   });
 }
-async function exportExcel(){
-  if(!cur) return;
-  try{ await ensureXLSX(); }catch(e){ alert(e.message); return; }
-  const date = cur.run.query_date;
-  let trucks = [];
-  try{ trucks = await getTrucks(date); }catch(e){}
-  const byTruck = Object.fromEntries(trucks.map(t=>[t.truck_code,t]));
-  const drivers = computeDrivers(byTruck);
-  const s = cur.run.summary || {};
-
+/* ── Excel 報告：共用樣式與區塊式產表器（日報／月報共用） ── */
+const REPORT_ORG = "彰化轉運中心", REPORT_AUTHOR = "陳尚福";
+const GLOSS = [
+  "確認次數：確認人員在荷米斯APP按一次「移櫃確認」＝1 次，一次可含多個櫃號；櫃數＝各次確認回報的櫃號加總",
+  "逐櫃查核：綠＝確認當下櫃子在場域內｜黃＝櫃子有到過場域但時間對不上，待複判｜紅＝回溯期內查無該櫃任何場域紀錄",
+  "確認前最後位置＝確認時間前最後一筆光罩的站所與時間；確認後首次到場域＝之後第一趟載抵彰化/秀水的實際時間與司機（含光罩漏刷的班次）",
+  "實際在場時段：車頭光罩實際進出彰化/秀水的時間（非表定班次）；「…」「未離站」為不完整時段，不計入停留合計",
+];
+const XL = (()=>{
   const F = "微軟正黑體";
   const bd = {style:"thin", color:{rgb:"9FB0C5"}};
   const border = {top:bd,bottom:bd,left:bd,right:bd};
@@ -652,14 +652,17 @@ async function exportExcel(){
     title:{font:{name:F,bold:true,sz:16,color:{rgb:"FFFFFF"}},fill:{fgColor:{rgb:"1F4E79"}},alignment:{horizontal:"center",vertical:"center"}},
     sub:  {font:{name:F,bold:true,sz:10,color:{rgb:"D8E2EE"}},fill:{fgColor:{rgb:"1F4E79"}},alignment:{horizontal:"center",vertical:"center"}},
     sec:  {font:{name:F,bold:true,sz:12,color:{rgb:"1F4E79"}},alignment:{vertical:"center"}},
-    head: {font:{name:F,bold:true,sz:11,color:{rgb:"FFFFFF"}},fill:{fgColor:{rgb:"2F5597"}},alignment:{horizontal:"center",vertical:"center"},border},
+    head: {font:{name:F,bold:true,sz:11,color:{rgb:"FFFFFF"}},fill:{fgColor:{rgb:"2F5597"}},alignment:{horizontal:"center",vertical:"center",wrapText:true},border},
     cell: {font:{name:F,bold:true,sz:10.5},alignment:{horizontal:"center",vertical:"center",wrapText:true},border},
     cellL:{font:{name:F,bold:true,sz:10.5},alignment:{horizontal:"left",vertical:"center",wrapText:true},border},
+    gloss:{font:{name:F,bold:true,sz:10,color:{rgb:"4F6076"}},alignment:{vertical:"center",wrapText:true}},
+    sign: {font:{name:F,bold:true,sz:11},alignment:{horizontal:"left",vertical:"bottom"},border:{bottom:{style:"thin",color:{rgb:"17212E"}}}},
   };
   const FILL = {green:"E7F5EC",yellow:"FCF3DD",red:"FBE9E9"};
   const INK  = {green:"1D6B40",yellow:"8A5A08",red:"A32222"};
   const kpiV = ink=>({font:{name:F,bold:true,sz:14,color:{rgb:ink||"17212E"}},alignment:{horizontal:"center",vertical:"center"},border});
   const put = (ws,r,c,style)=>{ const ad = XLSX.utils.encode_cell({r,c}); if(ws[ad]) ws[ad].s = style; };
+  const clone = o=>JSON.parse(JSON.stringify(o));
   // 依內容自動計算欄寬（中文算2單位、多行取最長行；超過上限靠換行+自動列高）
   const fitCols = (rows, maxW=60, minW=6)=>{
     const w = [];
@@ -671,113 +674,250 @@ async function exportExcel(){
     });
     return w.map(n=>({wch: Math.min(Math.max(n+2, minW), maxW)}));
   };
-
-  /* ── 工作表1：總覽 ── */
-  const staffRows = computeStaff();
-  const dRows = drivers.map(d=>[d.driver, d.truck, d.n, d.boxes, d.g||0, d.y||0, d.r||0,
-    d.detail.join("\n"),
-    d.ivList===null?"無車頭資料":(d.ivList.length?d.ivList.join("\n"):"當日無場區光罩"),
-    d.dur==null?"—":fmtDur(d.dur)]);
-  const sRows = staffRows.map(st=>[st.staff, st.n, st.boxes, st.g||0, st.y||0, st.r||0,
-    Object.values(st.drivers).map(v=>`${v.driver}（${v.code}）×${v.n}`).join("\n"),
-    st.detail.join("\n")]);
-  const NC = 10, LASTC = NC-1;
-  const now = new Date(), pad = n=>String(n).padStart(2,"0");
-  const GLOSS = [
-    "確認次數：確認人員在荷米斯APP按一次「移櫃確認」＝1 次，一次可含多個櫃號；櫃數＝各次確認回報的櫃號加總",
-    "逐櫃查核：綠＝確認當下櫃子在場域內｜黃＝櫃子有到過場域但時間對不上，待複判｜紅＝回溯期內查無該櫃任何場域紀錄",
-    "實際在場時段：車頭光罩實際進出彰化/秀水的時間（非表定班次）；「…」「未離站」為不完整時段，不計入停留合計",
-  ];
-  const R = {};           // 各區段列號
-  const aoa1 = [];
-  const push = (row, key)=>{ if(key) R[key] = aoa1.length; aoa1.push(row); };
-  push(["彰化轉運中心 移櫃確認稽核報告"], "title");
-  push([`查核日期 ${date}｜場區：彰化/秀水｜產出 ${pad(now.getMonth()+1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`], "sub");
-  push([]);
-  push(["移櫃確認(次)","比對櫃次","不重複櫃號","✓ 正常","⚠ 待複判","✕ 查無紀錄"], "kpiH");
-  push([s.confirms??cur.confirms.length, s.items??cur.items.length, s.containers??"—", s.green??0, s.yellow??0, s.red??0], "kpiV");
-  push([]);
-  push(["外聘司機彙總（依紅→黃→櫃數排序）"], "sec1");
-  push(["外聘司機","車頭","確認次數","櫃數","綠","黃","紅","確認明細（時間・確認人員・櫃數）","實際在場時段","停留合計"], "head1");
-  R.d0 = aoa1.length; dRows.forEach(r=>aoa1.push(r));
-  push([]);
-  push(["確認人員彙總（誰在什麼時間叫了外聘司機）"], "sec2");
-  push(["確認人員","確認次數","櫃數","綠","黃","紅","外聘司機（車頭）×次數","確認明細（時間・司機・櫃數）"], "head2");
-  R.s0 = aoa1.length; sRows.forEach(r=>aoa1.push(r));
-  push([]);
-  push(["名詞說明"], "sec3");
-  R.g0 = aoa1.length; GLOSS.forEach(g=>aoa1.push([g]));
-
-  const ws1 = XLSX.utils.aoa_to_sheet(aoa1);
-  const full = r=>({s:{r,c:0},e:{r,c:LASTC}});
-  ws1["!merges"] = [full(R.title), full(R.sub), full(R.sec1), full(R.sec2), full(R.sec3),
-                    ...GLOSS.map((_,i)=>full(R.g0+i))];
-  // 欄寬依內容計算（排除合併列）
-  ws1["!cols"] = fitCols([aoa1[R.kpiH], aoa1[R.kpiV], aoa1[R.head1], ...dRows, aoa1[R.head2], ...sRows]);
-  // 只有設計列固定列高，資料列留給 Excel 依換行自動調整；名詞說明是合併格不會自動調，固定 2 行高
-  const rows1 = [];
-  const setH = (r,h)=>{ rows1[r] = {hpt:h}; };
-  setH(R.title,30); setH(R.sub,18); setH(R.title+2,6); setH(R.kpiH,22); setH(R.kpiV,26); setH(R.kpiV+1,6);
-  setH(R.sec1,22); setH(R.head1,22); setH(R.sec2-1,6); setH(R.sec2,22); setH(R.head2,22); setH(R.sec3-1,6); setH(R.sec3,22);
-  GLOSS.forEach((_,i)=>setH(R.g0+i,32));
-  ws1["!rows"] = rows1;
-
-  put(ws1,R.title,0,ST.title); put(ws1,R.sub,0,ST.sub);
-  put(ws1,R.sec1,0,ST.sec); put(ws1,R.sec2,0,ST.sec); put(ws1,R.sec3,0,ST.sec);
-  for(let c=0;c<6;c++) put(ws1,R.kpiH,c,ST.head);
-  const kpiInk = [null,null,null,INK.green,INK.yellow,INK.red];
-  for(let c=0;c<6;c++) put(ws1,R.kpiV,c,kpiV(kpiInk[c]));
-  for(let c=0;c<NC;c++) put(ws1,R.head1,c,ST.head);
-  for(let c=0;c<8;c++)  put(ws1,R.head2,c,ST.head);
-  const styleRow = (r, d, ncols, leftCols, gCol, yCol, rCol)=>{
-    const fill = d.r? FILL.red : d.y? FILL.yellow : null;
-    for(let c=0;c<ncols;c++){
-      const st = JSON.parse(JSON.stringify(leftCols.includes(c) ? ST.cellL : ST.cell));
-      if(fill) st.fill = {fgColor:{rgb:fill}};
-      if(c===gCol&&d.g) st.font.color = {rgb:INK.green};
-      if(c===yCol&&d.y) st.font.color = {rgb:INK.yellow};
-      if(c===rCol&&d.r) st.font.color = {rgb:INK.red};
-      put(ws1,r,c,st);
+  return {ST,FILL,INK,kpiV,put,clone,fitCols};
+})();
+/* 區塊 → 工作表：title/sub/gap/sec/kpi/table/gloss/sign；設計列固定列高，資料列交給 Excel 自動調 */
+function buildSheet(blocks, ncols){
+  const {ST,kpiV,put,clone,fitCols} = XL;
+  const aoa=[], merges=[], rowsH=[], styles=[], fitSrc=[];
+  const LAST = ncols-1, full = r=>({s:{r,c:0},e:{r,c:LAST}});
+  let af = null;
+  for(const b of blocks){
+    const r = aoa.length;
+    if(b.type==="title"){ aoa.push([b.text]); merges.push(full(r)); rowsH[r]={hpt:30}; styles.push([r,0,ST.title]); }
+    else if(b.type==="sub"){ aoa.push([b.text]); merges.push(full(r)); rowsH[r]={hpt:18}; styles.push([r,0,ST.sub]); }
+    else if(b.type==="gap"){ aoa.push([]); rowsH[r]={hpt:6}; }
+    else if(b.type==="sec"){ aoa.push([b.text]); merges.push(full(r)); rowsH[r]={hpt:22}; styles.push([r,0,ST.sec]); }
+    else if(b.type==="kpi"){
+      aoa.push(b.head); rowsH[r]={hpt:22}; b.head.forEach((_,c)=>styles.push([r,c,ST.head]));
+      aoa.push(b.vals); rowsH[r+1]={hpt:26}; b.vals.forEach((_,c)=>styles.push([r+1,c,kpiV(b.inks?.[c])]));
+      fitSrc.push(b.head,b.vals);
     }
-  };
-  drivers.forEach((d,i)=>styleRow(R.d0+i, d, NC, [0,7,8], 4,5,6));
-  staffRows.forEach((st,i)=>styleRow(R.s0+i, st, 8, [0,6,7], 3,4,5));
-  GLOSS.forEach((_,i)=>put(ws1,R.g0+i,0,{font:{name:F,bold:true,sz:10,color:{rgb:"4F6076"}},alignment:{vertical:"center",wrapText:true}}));
-
-  /* ── 工作表2：逐櫃明細 ── */
-  const items = [];
-  for(const cf of cur.confirms)
-    for(const it of (cur.itemsByConfirm[cf.id]||[]))
-      items.push([cf.move_date, cf.move_station, cf.truck, cf.driver, cf.confirm_staff,
-                  cf.confirm_time_raw, it.container_no, V[it.verdict].label, it.reason||"", it.verdict]);
-  items.sort((a,b)=>({"查無紀錄":0,"待複判":1,"正常":2}[a[7]]-{"查無紀錄":0,"待複判":1,"正常":2}[b[7]]));
-  const aoa2 = [
-    [`逐櫃明細（${date}）`],
-    ["移櫃日","移櫃站","車頭","司機","確認人員","確認時間","櫃號","燈號","判定理由"],
-    ...items.map(r=>r.slice(0,9))
-  ];
-  const ws2 = XLSX.utils.aoa_to_sheet(aoa2);
-  ws2["!merges"] = [{s:{r:0,c:0},e:{r:0,c:8}}];
-  ws2["!cols"] = fitCols(aoa2.slice(1));
-  ws2["!rows"] = [{hpt:26},{hpt:22}];
-  ws2["!autofilter"] = {ref:`A2:I${items.length+2}`};
-  put(ws2,0,0,ST.title);
-  for(let c=0;c<9;c++) put(ws2,1,c,ST.head);
-  items.forEach((row,i)=>{
-    const v = row[9];
-    for(let c=0;c<9;c++){
-      const st = JSON.parse(JSON.stringify((c===3||c===8) ? ST.cellL : ST.cell));
-      st.fill = {fgColor:{rgb:FILL[v]}};
-      if(c===7) st.font.color = {rgb:INK[v]};
-      put(ws2,2+i,c,st);
+    else if(b.type==="table"){
+      aoa.push(b.head); rowsH[r]={hpt:24}; b.head.forEach((_,c)=>styles.push([r,c,ST.head])); fitSrc.push(b.head);
+      if(!b.rows.length && b.empty){
+        aoa.push([b.empty]); merges.push({s:{r:r+1,c:0},e:{r:r+1,c:b.head.length-1}}); styles.push([r+1,0,ST.cellL]);
+      }
+      b.rows.forEach((row,i)=>{
+        aoa.push(row); fitSrc.push(row);
+        const fill = b.fill ? b.fill(row,i) : null;
+        row.forEach((_,c)=>{
+          const st = clone((b.left||[]).includes(c) ? ST.cellL : ST.cell);
+          if(fill) st.fill = {fgColor:{rgb:fill}};
+          const ink = b.ink ? b.ink(row,i,c) : null; if(ink) st.font.color = {rgb:ink};
+          styles.push([r+1+i,c,st]);
+        });
+      });
+      if(b.autofilter && b.rows.length) af = {r0:r, r1:r+b.rows.length, c1:b.head.length-1};
     }
+    else if(b.type==="gloss"){
+      b.lines.forEach((t,i)=>{ aoa.push([t]); merges.push(full(r+i)); rowsH[r+i]={hpt:32}; styles.push([r+i,0,ST.gloss]); });
+    }
+    else if(b.type==="sign"){
+      const third = Math.max(1, Math.floor(ncols/3));
+      const row = new Array(ncols).fill("");
+      row[0] = `製表：${REPORT_AUTHOR}`; row[third] = "複核："; row[2*third] = "主管核示：";
+      aoa.push(row); rowsH[r]={hpt:42};
+      merges.push({s:{r,c:0},e:{r,c:third-1}},{s:{r,c:third},e:{r,c:2*third-1}},{s:{r,c:2*third},e:{r,c:LAST}});
+      [0,third,2*third].forEach(c=>styles.push([r,c,ST.sign]));
+    }
+  }
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!merges"]=merges; ws["!rows"]=rowsH; ws["!cols"]=fitCols(fitSrc);
+  for(const [r,c,st] of styles) put(ws,r,c,st);
+  if(af) ws["!autofilter"] = {ref:`${XLSX.utils.encode_cell({r:af.r0,c:0})}:${XLSX.utils.encode_cell({r:af.r1,c:af.c1})}`};
+  return ws;
+}
+/* 逐櫃位置證據：確認前最後光罩、確認後首次到場域、一句話結論 */
+const isoToRaw = iso => iso ? `${iso.slice(5,7)}/${iso.slice(8,10)} ${iso.slice(11,16)}` : "";
+function itemPosition(it, cf){
+  const ev = it.evidence||{}, cm = parseMD(cf.confirm_time_raw||"");
+  const ge = ev.gate_events||[];
+  const beforeEv = cm==null ? null : ge.filter(e=>parseMD(isoToRaw(e.ts)) <= cm).pop();
+  const before = beforeEv ? `${beforeEv.station} ${beforeEv.kind} ${isoToRaw(beforeEv.ts)}` : "回溯期內無光罩";
+  const trAfter = (ev.trips||[]).filter(l=>ZONE_NAMES.includes(l.to) && l.act_arr && cm!=null && parseMD(l.act_arr) > cm)
+                    .sort((a,b)=>parseMD(a.act_arr)-parseMD(b.act_arr))[0];
+  const gAfter = cm==null ? null : ge.find(e=>ZONE_CODES.includes(e.station_code) && e.kind==="進站" && parseMD(isoToRaw(e.ts)) > cm);
+  let after = "—", afterMin = null, carrier = "";
+  if(trAfter){ after = `${trAfter.act_arr} ${trAfter.driver}（${trAfter.trip}）`; afterMin = parseMD(trAfter.act_arr); carrier = trAfter.driver; }
+  else if(gAfter){ after = `${isoToRaw(gAfter.ts)} ${gAfter.driver}（${gAfter.trip}）`; afterMin = parseMD(isoToRaw(gAfter.ts)); carrier = gAfter.driver; }
+  const gapH = afterMin!=null ? Math.round((afterMin-cm)/6)/10 : null;
+  let conclusion;
+  if(it.verdict==="green") conclusion = it.reason || "確認時櫃子在場域內";
+  else{
+    const inZone = beforeEv && ZONE_CODES.includes(beforeEv.station_code);
+    const where = !beforeEv ? "確認前回溯期內查無任何光罩"
+      : inZone ? `確認前最後光罩在${beforeEv.station}（${beforeEv.kind} ${isoToRaw(beforeEv.ts)}）`
+      : `確認時櫃子最後位置在${beforeEv.station}（${isoToRaw(beforeEv.ts)}）`;
+    const then = afterMin!=null ? `，${gapH} 小時後才由 ${carrier} 載抵場域` : "，之後回溯期內未再進入場域";
+    conclusion = where + then + (it.verdict==="red" ? "。建議調閱該司機移櫃確認畫面對質" : "，請複判");
+  }
+  return {before, after, gapH, conclusion};
+}
+/* 把一天（或多天合併）的資料整理成報表列 */
+function reportRows(data, date){
+  const rows = [];
+  for(const cf of data.confirms)
+    for(const it of (data.itemsByConfirm[cf.id]||[]))
+      rows.push({date: date||cf.query_date, cf, it, pos: itemPosition(it, cf)});
+  const ord = {red:0, yellow:1, green:2};
+  rows.sort((a,b)=>(ord[a.it.verdict]-ord[b.it.verdict]) || a.date.localeCompare(b.date));
+  return rows;
+}
+const stamp = ()=>{ const n=new Date(), p=x=>String(x).padStart(2,"0"); return `${p(n.getMonth()+1)}/${p(n.getDate())} ${p(n.getHours())}:${p(n.getMinutes())}`; };
+const subLine = left => `${left}｜場區：彰化/秀水｜製表單位：${REPORT_ORG}｜製表人：${REPORT_AUTHOR}｜產出 ${stamp()}`;
+const fillV = v => XL.FILL[v], inkV = v => XL.INK[v];
+function tableDrivers(drivers, withPresence){
+  const head = ["外聘司機","車頭","確認次數","櫃數","綠","黃","紅","確認明細（時間・確認人員・櫃數）"];
+  if(withPresence) head.push("實際在場時段","停留合計");
+  const rows = drivers.map(d=>{
+    const r = [d.driver, d.truck, d.n, d.boxes, d.g||0, d.y||0, d.r||0, d.detail.join("\n")];
+    if(withPresence) r.push(d.ivList===null?"無車頭資料":(d.ivList.length?d.ivList.join("\n"):"當日無場區光罩"), d.dur==null?"—":fmtDur(d.dur));
+    return r;
   });
-
+  return {type:"table", head, rows, left:[0,7,8],
+    fill:(row,i)=>drivers[i].r?XL.FILL.red:drivers[i].y?XL.FILL.yellow:null,
+    ink:(row,i,c)=>(c===4&&drivers[i].g)?XL.INK.green:(c===5&&drivers[i].y)?XL.INK.yellow:(c===6&&drivers[i].r)?XL.INK.red:null,
+    empty:"本期無外聘移櫃確認"};
+}
+function tableStaff(staff){
+  return {type:"table", head:["確認人員","確認次數","櫃數","綠","黃","紅","外聘司機（車頭）×次數","確認明細（時間・司機・櫃數）"],
+    rows: staff.map(s=>[s.staff, s.n, s.boxes, s.g||0, s.y||0, s.r||0,
+      Object.values(s.drivers).map(v=>`${v.driver}（${v.code}）×${v.n}`).join("\n"), s.detail.join("\n")]),
+    left:[0,6,7],
+    fill:(row,i)=>staff[i].r?XL.FILL.red:staff[i].y?XL.FILL.yellow:null,
+    ink:(row,i,c)=>(c===3&&staff[i].g)?XL.INK.green:(c===4&&staff[i].y)?XL.INK.yellow:(c===5&&staff[i].r)?XL.INK.red:null,
+    empty:"本期無資料"};
+}
+function sheetAudit(rows, withDate){
+  const flags = rows.filter(x=>x.it.verdict!=="green");
+  const head = [...(withDate?["查核日"]:[]), "燈號","櫃號","移櫃站","確認人員","確認時間","外聘司機（車頭）","確認前最後位置","確認後首次到場域","結論"];
+  const body = flags.map(x=>[...(withDate?[x.date]:[]), V[x.it.verdict].label, x.it.container_no, x.cf.move_station, x.cf.confirm_staff,
+    x.cf.confirm_time_raw, `${x.cf.driver}（${x.cf.truck}）`, x.pos.before, x.pos.after, x.pos.conclusion]);
+  const off = withDate?1:0;
+  return buildSheet([
+    {type:"title", text:`需追查項目（${flags.length} 項）`},
+    {type:"table", head, rows: body, left:[off+5,off+6,off+7,off+8], autofilter:true,
+      fill:(row,i)=>fillV(flags[i].it.verdict), ink:(row,i,c)=>c===off?inkV(flags[i].it.verdict):null,
+      empty:"本期無需追查項目 ✓"},
+  ], head.length);
+}
+function sheetDetail(rows, withDate){
+  const head = [...(withDate?["查核日"]:[]), "移櫃日","移櫃站","車頭","司機","確認人員","確認時間","櫃號","燈號","確認前最後光罩","確認後首次進場區","判定理由"];
+  const body = rows.map(x=>[...(withDate?[x.date]:[]), x.cf.move_date, x.cf.move_station, x.cf.truck, x.cf.driver, x.cf.confirm_staff,
+    x.cf.confirm_time_raw, x.it.container_no, V[x.it.verdict].label, x.pos.before, x.pos.after, x.it.reason||""]);
+  const off = withDate?1:0;
+  return buildSheet([
+    {type:"title", text:`逐櫃明細（${rows.length} 櫃次）`},
+    {type:"table", head, rows: body, left:[off+3,off+8,off+9,off+10], autofilter:true,
+      fill:(row,i)=>fillV(rows[i].it.verdict), ink:(row,i,c)=>c===off+7?inkV(rows[i].it.verdict):null, empty:"本期無資料"},
+  ], head.length);
+}
+function sheetLegs(trucks){
+  const body = [], meta = [];
+  for(const t of trucks) for(const l of (t.legs||[])){
+    body.push([t.truck_label||t.truck_code, t.driver||"", l.seq, l.trip, l.from, l.to, l.plan_dep, l.act_dep||"—", l.plan_arr, l.act_arr||"—", l.container||"", l.note||""]);
+    meta.push({zone: ZONE_NAMES.some(n=>l.from===n||l.to===n), noGate: !!(l.container && l.container!=="取消" && !l.act_dep && !l.act_arr)});
+  }
+  const head = ["車頭","司機","序","班次","起站","迄站","預定離","實際離","預定進","實際進","櫃號","備註"];
+  return buildSheet([
+    {type:"title", text:`車頭班次明細（${trucks.length} 台｜表定 vs 實際｜綠底＝進出場域、黃底＝有排櫃號但無光罩）`},
+    {type:"table", head, rows: body, left:[0,1,3,11], autofilter:true,
+      fill:(row,i)=>meta[i].noGate?XL.FILL.yellow:meta[i].zone?XL.FILL.green:null, empty:"本日無車頭資料"},
+  ], head.length);
+}
+async function exportExcel(){
+  if(!cur) return;
+  try{ await ensureXLSX(); }catch(e){ alert(e.message); return; }
+  const date = cur.run.query_date;
+  let trucks = []; try{ trucks = await getTrucks(date); }catch(e){}
+  const byTruck = Object.fromEntries(trucks.map(t=>[t.truck_code,t]));
+  const drivers = computeDrivers(byTruck), staff = computeStaff(), s = cur.run.summary||{};
+  const rows = reportRows(cur, date);
+  const ws1 = buildSheet([
+    {type:"title", text:`${REPORT_ORG} 移櫃確認稽核報告`},
+    {type:"sub", text: subLine(`查核日期 ${date}`)},
+    {type:"gap"},
+    {type:"kpi", head:["移櫃確認(次)","比對櫃次","不重複櫃號","✓ 正常","⚠ 待複判","✕ 查無紀錄"],
+      vals:[s.confirms??cur.confirms.length, s.items??cur.items.length, s.containers??"—", s.green??0, s.yellow??0, s.red??0],
+      inks:[null,null,null,XL.INK.green,XL.INK.yellow,XL.INK.red]},
+    {type:"gap"},
+    {type:"sec", text:"外聘司機彙總（依紅→黃→櫃數排序）"}, tableDrivers(drivers, true),
+    {type:"gap"},
+    {type:"sec", text:"確認人員彙總（誰在什麼時間叫了外聘司機）"}, tableStaff(staff),
+    {type:"gap"},
+    {type:"sec", text:"名詞說明"}, {type:"gloss", lines:GLOSS},
+    {type:"gap"}, {type:"sign"},
+  ], 10);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws1, "總覽");
-  XLSX.utils.book_append_sheet(wb, ws2, "逐櫃明細");
-  wb.Workbook = {Names:[{Name:"_xlnm.Print_Titles", Sheet:1, Ref:"'逐櫃明細'!$1:$2"}]};
+  XLSX.utils.book_append_sheet(wb, sheetAudit(rows,false), "需追查");
+  XLSX.utils.book_append_sheet(wb, sheetDetail(rows,false), "逐櫃明細");
+  XLSX.utils.book_append_sheet(wb, sheetLegs(trucks), "車頭班次明細");
+  wb.Workbook = {Names:[
+    {Name:"_xlnm.Print_Titles", Sheet:1, Ref:"'需追查'!$1:$2"},
+    {Name:"_xlnm.Print_Titles", Sheet:2, Ref:"'逐櫃明細'!$1:$2"},
+    {Name:"_xlnm.Print_Titles", Sheet:3, Ref:"'車頭班次明細'!$1:$2"},
+  ]};
   XLSX.writeFile(wb, `移櫃稽核報告_${date}.xlsx`);
+}
+/* 月報：整月每日趨勢、外聘司機／確認人員月累計、全月需追查與逐櫃明細 */
+async function exportMonthly(){
+  if(!runs.length) return;
+  const month = prompt("匯出月份（YYYY-MM）", (cur?.run.query_date||runs[0].query_date).slice(0,7));
+  if(!month || !/^\d{4}-\d{2}$/.test(month)) return;
+  const days = runs.filter(r=>r.query_date.startsWith(month)).sort((a,b)=>a.query_date.localeCompare(b.query_date));
+  if(!days.length){ alert(`${month} 沒有稽核資料`); return; }
+  try{ await ensureXLSX(); }catch(e){ alert(e.message); return; }
+  const btn = [...document.querySelectorAll("header button")].find(b=>b.textContent.includes("月報"));
+  if(btn) btn.textContent = "產生中…";
+  try{
+    const merged = {confirms:[], itemsByConfirm:{}}, rows = [], trend = [];
+    for(const d of days){
+      const data = await api({action:"get_run", token, date:d.query_date});
+      data.itemsByConfirm = {};
+      for(const it of data.items) (data.itemsByConfirm[it.confirm_id] ??= []).push(it);
+      for(const cf of data.confirms) cf.query_date = d.query_date;
+      merged.confirms.push(...data.confirms); Object.assign(merged.itemsByConfirm, data.itemsByConfirm);
+      rows.push(...reportRows(data, d.query_date));
+      const s = d.summary||{};
+      trend.push([d.query_date, s.confirms??data.confirms.length, s.items??data.items.length, s.green??0, s.yellow??0, s.red??0]);
+    }
+    const ord = {red:0, yellow:1, green:2};
+    rows.sort((a,b)=>(ord[a.it.verdict]-ord[b.it.verdict]) || a.date.localeCompare(b.date));
+    const tot = trend.reduce((a,r)=>[null, a[1]+r[1], a[2]+r[2], a[3]+r[3], a[4]+r[4], a[5]+r[5]], [null,0,0,0,0,0]);
+    const drivers = computeDrivers({}, merged), staff = computeStaff(merged);
+    const ws1 = buildSheet([
+      {type:"title", text:`${REPORT_ORG} 移櫃確認稽核月報`},
+      {type:"sub", text: subLine(`統計月份 ${month}（${days.length} 天）`)},
+      {type:"gap"},
+      {type:"kpi", head:["移櫃確認(次)","比對櫃次","✓ 正常","⚠ 待複判","✕ 查無紀錄","正常率"],
+        vals:[tot[1], tot[2], tot[3], tot[4], tot[5], tot[2]?`${(tot[3]/tot[2]*100).toFixed(1)}%`:"—"],
+        inks:[null,null,XL.INK.green,XL.INK.yellow,XL.INK.red,null]},
+      {type:"gap"},
+      {type:"sec", text:"每日趨勢"},
+      {type:"table", head:["查核日","確認次數","櫃次","綠","黃","紅"], rows:trend, left:[],
+        fill:(row)=>row[5]?XL.FILL.red:row[4]?XL.FILL.yellow:null,
+        ink:(row,i,c)=>(c===3&&row[3])?XL.INK.green:(c===4&&row[4])?XL.INK.yellow:(c===5&&row[5])?XL.INK.red:null},
+      {type:"gap"},
+      {type:"sec", text:"外聘司機月累計（依紅→黃→櫃數排序）"}, tableDrivers(drivers, false),
+      {type:"gap"},
+      {type:"sec", text:"確認人員月累計"}, tableStaff(staff),
+      {type:"gap"},
+      {type:"sec", text:"名詞說明"}, {type:"gloss", lines:GLOSS},
+      {type:"gap"}, {type:"sign"},
+    ], 8);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws1, "月總覽");
+    XLSX.utils.book_append_sheet(wb, sheetAudit(rows,true), "全月需追查");
+    XLSX.utils.book_append_sheet(wb, sheetDetail(rows,true), "全月逐櫃明細");
+    wb.Workbook = {Names:[
+      {Name:"_xlnm.Print_Titles", Sheet:1, Ref:"'全月需追查'!$1:$2"},
+      {Name:"_xlnm.Print_Titles", Sheet:2, Ref:"'全月逐櫃明細'!$1:$2"},
+    ]};
+    XLSX.writeFile(wb, `移櫃稽核月報_${month}.xlsx`);
+  }catch(e){ alert("月報產生失敗："+e.message); }
+  finally{ if(btn) btn.textContent = "⬇ 匯出月報"; }
 }
 /* 彈窗：點背景關閉 */
 document.getElementById("dlg").addEventListener("click",e=>{
