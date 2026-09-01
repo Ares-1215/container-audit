@@ -656,6 +656,7 @@ const XL = (()=>{
     cell: {font:{name:F,bold:true,sz:10.5},alignment:{horizontal:"center",vertical:"center",wrapText:true},border},
     cellL:{font:{name:F,bold:true,sz:10.5},alignment:{horizontal:"left",vertical:"center",wrapText:true},border},
     gloss:{font:{name:F,bold:true,sz:10,color:{rgb:"4F6076"}},alignment:{vertical:"center",wrapText:true}},
+    sum:  {font:{name:F,bold:true,sz:11,color:{rgb:"17212E"}},alignment:{vertical:"center",wrapText:true}},
     sign: {font:{name:F,bold:true,sz:11},alignment:{horizontal:"left",vertical:"bottom"},border:{bottom:{style:"thin",color:{rgb:"17212E"}}}},
   };
   const FILL = {green:"E7F5EC",yellow:"FCF3DD",red:"FBE9E9"};
@@ -713,6 +714,9 @@ function buildSheet(blocks, ncols){
     else if(b.type==="gloss"){
       b.lines.forEach((t,i)=>{ aoa.push([t]); merges.push(full(r+i)); rowsH[r+i]={hpt:32}; styles.push([r+i,0,ST.gloss]); });
     }
+    else if(b.type==="lines"){   // 重點摘要：合併整列、深色粗體
+      b.lines.forEach((t,i)=>{ aoa.push([t]); merges.push(full(r+i)); rowsH[r+i]={hpt:30}; styles.push([r+i,0,ST.sum]); });
+    }
     else if(b.type==="sign"){
       const third = Math.max(1, Math.floor(ncols/3));
       const row = new Array(ncols).fill("");
@@ -742,6 +746,10 @@ function itemPosition(it, cf){
   if(trAfter){ after = `${trAfter.act_arr} ${trAfter.driver}（${trAfter.trip}）`; afterMin = parseMD(trAfter.act_arr); carrier = trAfter.driver; }
   else if(gAfter){ after = `${isoToRaw(gAfter.ts)} ${gAfter.driver}（${gAfter.trip}）`; afterMin = parseMD(isoToRaw(gAfter.ts)); carrier = gAfter.driver; }
   const gapH = afterMin!=null ? Math.round((afterMin-cm)/6)/10 : null;
+  // 最後一次「場域」光罩（分類用）：距確認幾小時、是進站還離站
+  const zoneLast = cm==null ? null : ge.filter(e=>ZONE_CODES.includes(e.station_code) && parseMD(isoToRaw(e.ts)) <= cm).pop();
+  const zoneGapH = zoneLast ? Math.round((cm - parseMD(isoToRaw(zoneLast.ts)))/6)/10 : null;
+  const zoneKind = zoneLast ? zoneLast.kind : null;
   let conclusion;
   if(it.verdict==="green") conclusion = it.reason || "確認時櫃子在場域內";
   else{
@@ -752,14 +760,36 @@ function itemPosition(it, cf){
     const then = afterMin!=null ? `，${gapH} 小時後才由 ${carrier} 載抵場域` : "，之後回溯期內未再進入場域";
     conclusion = where + then + (it.verdict==="red" ? "。建議調閱該司機移櫃確認畫面對質" : "，請複判");
   }
-  return {before, after, gapH, conclusion};
+  return {before, after, gapH, conclusion, zoneGapH, zoneKind, hasAnyTrip: (ev.trips||[]).length>0};
+}
+/* 異常自動分類（僅非綠燈）：主管可直接依型態處理 */
+function classifyItem(x, dayTruckCodes){
+  const {it, pos} = x;
+  if(it.verdict==="green") return "";
+  const rsn = it.reason||"";
+  if(/拆封班次|接駁/.test(rsn)) return "光罩漏刷（有拆封/接駁佐證）";
+  if(it.verdict==="red" && dayTruckCodes.has(it.container_no)) return "疑似誤登車頭代號";
+  if(it.verdict==="red" && pos.before==="回溯期內無光罩" && !pos.hasAnyTrip) return "查無任何紀錄（櫃號存疑）";
+  if(pos.zoneKind==="離站" && pos.zoneGapH!=null && pos.zoneGapH > 24) return "離場多日後確認";
+  if(pos.zoneKind==="離站" && pos.zoneGapH!=null && pos.zoneGapH <= 6) return "遲按確認（離站後補按）";
+  if(pos.gapH!=null && pos.gapH > 0 && (pos.zoneGapH==null || pos.zoneGapH > 6)) return "早於到站確認";
+  return "其他（待複判）";
 }
 /* 把一天（或多天合併）的資料整理成報表列 */
 function reportRows(data, date){
   const rows = [];
+  const codesByDate = {};
+  for(const cf of data.confirms){
+    const d = date||cf.query_date;
+    (codesByDate[d] ??= new Set()).add((cf.truck||"").trim().split(/\s+/)[0]);
+  }
   for(const cf of data.confirms)
-    for(const it of (data.itemsByConfirm[cf.id]||[]))
-      rows.push({date: date||cf.query_date, cf, it, pos: itemPosition(it, cf)});
+    for(const it of (data.itemsByConfirm[cf.id]||[])){
+      const d = date||cf.query_date;
+      const x = {date: d, cf, it, pos: itemPosition(it, cf)};
+      x.cls = classifyItem(x, codesByDate[d]||new Set());
+      rows.push(x);
+    }
   const ord = {red:0, yellow:1, green:2};
   rows.sort((a,b)=>(ord[a.it.verdict]-ord[b.it.verdict]) || a.date.localeCompare(b.date));
   return rows;
@@ -791,13 +821,13 @@ function tableStaff(staff){
 }
 function sheetAudit(rows, withDate){
   const flags = rows.filter(x=>x.it.verdict!=="green");
-  const head = [...(withDate?["查核日"]:[]), "燈號","櫃號","移櫃站","確認人員","確認時間","外聘司機（車頭）","確認前最後位置","確認後首次到場域","結論"];
-  const body = flags.map(x=>[...(withDate?[x.date]:[]), V[x.it.verdict].label, x.it.container_no, x.cf.move_station, x.cf.confirm_staff,
+  const head = [...(withDate?["查核日"]:[]), "燈號","分類","櫃號","移櫃站","確認人員","確認時間","外聘司機（車頭）","確認前最後位置","確認後首次到場域","結論"];
+  const body = flags.map(x=>[...(withDate?[x.date]:[]), V[x.it.verdict].label, x.cls, x.it.container_no, x.cf.move_station, x.cf.confirm_staff,
     x.cf.confirm_time_raw, `${x.cf.driver}（${x.cf.truck}）`, x.pos.before, x.pos.after, x.pos.conclusion]);
   const off = withDate?1:0;
   return buildSheet([
     {type:"title", text:`需追查項目（${flags.length} 項）`},
-    {type:"table", head, rows: body, left:[off+5,off+6,off+7,off+8], autofilter:true,
+    {type:"table", head, rows: body, left:[off+6,off+7,off+8,off+9], autofilter:true,
       fill:(row,i)=>fillV(flags[i].it.verdict), ink:(row,i,c)=>c===off?inkV(flags[i].it.verdict):null,
       empty:"本期無需追查項目 ✓"},
   ], head.length);
@@ -887,13 +917,63 @@ async function exportMonthly(){
     rows.sort((a,b)=>(ord[a.it.verdict]-ord[b.it.verdict]) || a.date.localeCompare(b.date));
     const tot = trend.reduce((a,r)=>[null, a[1]+r[1], a[2]+r[2], a[3]+r[3], a[4]+r[4], a[5]+r[5]], [null,0,0,0,0,0]);
     const drivers = computeDrivers({}, merged), staff = computeStaff(merged);
+
+    /* ── 詳細分析 ── */
+    const flags = rows.filter(x=>x.it.verdict!=="green");
+    // 異常分類統計
+    const clsCount = {};
+    flags.forEach(x=>clsCount[x.cls]=(clsCount[x.cls]||0)+1);
+    const clsRows = Object.entries(clsCount).sort((a,b)=>b[1]-a[1]).map(([k,v])=>[k,v]);
+    // 司機×確認人員異常組合
+    const combo = {};
+    flags.forEach(x=>{
+      const k = `${x.cf.driver}|${x.cf.confirm_staff}`;
+      (combo[k] ??= {driver:x.cf.driver, staff:x.cf.confirm_staff, r:0, y:0, cls:{}}) ;
+      combo[k][x.it.verdict==="red"?"r":"y"]++;
+      combo[k].cls[x.cls]=(combo[k].cls[x.cls]||0)+1;
+    });
+    const comboRows = Object.values(combo).sort((a,b)=>(b.r-a.r)||((b.r+b.y)-(a.r+a.y)))
+      .map(c=>[c.driver, c.staff, c.r, c.y, Object.entries(c.cls).map(([k,v])=>`${k}×${v}`).join("、")]);
+    // 時段分析：全部確認次數 vs 異常件數
+    const BUCKETS = ["00–06","06–12","12–18","18–24"];
+    const bucketOf = raw=>{ const h = +String(raw||"").slice(6,8); return BUCKETS[Math.min(3, Math.floor(h/6))]; };
+    const hourAll = {}, hourFlag = {};
+    merged.confirms.forEach(cf=>hourAll[bucketOf(cf.confirm_time_raw)]=(hourAll[bucketOf(cf.confirm_time_raw)]||0)+1);
+    flags.forEach(x=>hourFlag[bucketOf(x.cf.confirm_time_raw)]=(hourFlag[bucketOf(x.cf.confirm_time_raw)]||0)+1);
+    const hourRows = BUCKETS.map(b=>[b, hourAll[b]||0, hourFlag[b]||0]);
+    // 重點摘要（自動生成結論）
+    const rate = tot[2] ? (tot[3]/tot[2]*100).toFixed(1) : "—";
+    const dFlag = {}; flags.forEach(x=>dFlag[x.cf.driver]=(dFlag[x.cf.driver]||0)+1);
+    const sFlag = {}; flags.forEach(x=>sFlag[x.cf.confirm_staff]=(sFlag[x.cf.confirm_staff]||0)+1);
+    const top = (o,n)=>Object.entries(o).sort((a,b)=>b[1]-a[1]).slice(0,n).map(([k,v])=>`${k}（${v} 件）`).join("、");
+    const topHour = hourRows.slice().sort((a,b)=>b[2]-a[2])[0];
+    const summary = [
+      `一、本月 ${days.length} 天中 ${trend.filter(t=>t[1]>0).length} 天有移櫃作業，外聘司機共確認 ${tot[1]} 次、${tot[2]} 櫃次；正常 ${tot[3]} 件，正常率 ${rate}%。`,
+      `二、需追查 ${flags.length} 件（紅燈 ${tot[5]}、黃燈 ${tot[4]}）；型態：${clsRows.map(([k,v])=>`${k} ${v} 件`).join("、")||"無"}。`,
+      `三、異常集中：司機 ${top(dFlag,3)||"無"}；經手確認人員 ${top(sFlag,3)||"無"}。`,
+      `四、異常確認時段以 ${topHour&&topHour[2]?`${topHour[0]} 為主（${topHour[2]} 件）`:"無明顯集中"}；明細見「全月需追查」工作表。`,
+    ];
+
     const ws1 = buildSheet([
       {type:"title", text:`${REPORT_ORG} 移櫃確認稽核月報`},
       {type:"sub", text: subLine(`統計月份 ${month}（${days.length} 天）`)},
       {type:"gap"},
+      {type:"sec", text:"重點摘要"}, {type:"lines", lines: summary},
+      {type:"gap"},
       {type:"kpi", head:["移櫃確認(次)","比對櫃次","✓ 正常","⚠ 待複判","✕ 查無紀錄","正常率"],
-        vals:[tot[1], tot[2], tot[3], tot[4], tot[5], tot[2]?`${(tot[3]/tot[2]*100).toFixed(1)}%`:"—"],
+        vals:[tot[1], tot[2], tot[3], tot[4], tot[5], tot[2]?`${rate}%`:"—"],
         inks:[null,null,XL.INK.green,XL.INK.yellow,XL.INK.red,null]},
+      {type:"gap"},
+      {type:"sec", text:"異常型態統計"},
+      {type:"table", head:["分類","件數"], rows:clsRows, left:[0], empty:"本月無異常"},
+      {type:"gap"},
+      {type:"sec", text:"司機×確認人員 異常組合（依紅燈排序）"},
+      {type:"table", head:["外聘司機","確認人員","紅","黃","型態"], rows:comboRows, left:[0,4],
+        ink:(row,i,c)=>(c===2&&row[2])?XL.INK.red:(c===3&&row[3])?XL.INK.yellow:null, empty:"本月無異常組合"},
+      {type:"gap"},
+      {type:"sec", text:"時段分析（確認時間分佈）"},
+      {type:"table", head:["時段","確認次數(全部)","異常件數"], rows:hourRows, left:[],
+        ink:(row,i,c)=>(c===2&&row[2])?XL.INK.red:null},
       {type:"gap"},
       {type:"sec", text:"每日趨勢"},
       {type:"table", head:["查核日","確認次數","櫃次","綠","黃","紅"], rows:trend, left:[],
