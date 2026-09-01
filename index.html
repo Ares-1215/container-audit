@@ -98,6 +98,23 @@ main{max-width:1180px;margin:0 auto;padding:18px 16px 60px}
 .seg button:hover{background:var(--line2)}
 .seg button.on{background:var(--accent);color:var(--accent-ink);font-weight:600}
 .seg button.on:hover{background:var(--accent)}
+.calWrap{position:relative}
+.calPop{position:absolute;right:0;top:calc(100% + 6px);z-index:40;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-lift);padding:12px;width:292px}
+.calHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-weight:700}
+.calNav{border:none;background:transparent;font-size:1.1rem;padding:4px 12px;cursor:pointer;color:var(--ink);border-radius:6px}
+.calNav:hover{background:var(--line2)}
+.calGrid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+.calDow{font-size:.72rem;color:var(--muted);padding:4px 0}
+.calDay{position:relative;border:none;background:transparent;border-radius:8px;height:36px;font:inherit;font-size:.85rem;color:var(--ink);cursor:pointer;padding-top:0}
+button.calDay:hover{background:var(--line2)}
+.calDay.sel{background:var(--accent);color:var(--accent-ink)}
+.calDay.off{color:var(--muted);opacity:.35;cursor:default}
+.calDay .dot{position:absolute;left:50%;transform:translateX(-50%);bottom:3px;width:6px;height:6px;border-radius:50%;display:block}
+.dot.r{background:var(--crit)} .dot.y{background:var(--warn)} .dot.g{background:var(--good)} .dot.e{background:var(--muted);opacity:.5}
+.calFoot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:.75rem;color:var(--muted)}
+.statusEdit{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.statusEdit button{padding:4px 10px;font-size:.82rem}
+.statusEdit input{flex:1;min-width:160px;padding:5px 10px;font-size:.84rem}
 .truckGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
 .truckCard{
   background:var(--card);border:1px solid var(--line);border-radius:14px;
@@ -226,7 +243,10 @@ tr.zone td:first-child{font-weight:700}
     <button onclick="setView('drivers',this)">司機</button>
     <button onclick="setView('trucks',this)">車頭</button>
   </div>
-  <select id="dateSel" onchange="loadRun(this.value)"></select>
+  <div class="calWrap">
+    <button class="ghost" id="dateBtn" onclick="toggleCal(event)">📅 日期 ▾</button>
+    <div id="calPop" class="calPop" style="display:none"></div>
+  </div>
   <button class="ghost" onclick="exportExcel()" title="匯出目前日期的Excel報告">⬇ 匯出Excel</button>
   <button class="ghost" onclick="exportMonthly()" title="匯出整月彙總報告">⬇ 匯出月報</button>
   <button class="ghost" id="themeBtn" onclick="cycleTheme()">🌓</button>
@@ -302,14 +322,65 @@ async function login(){
 }
 document.getElementById("pw").addEventListener("keydown",e=>{if(e.key==="Enter")login()});
 
+const runByDate = {};
 function enter(){
   document.getElementById("gate").style.display = "none";
   document.getElementById("hdr").style.display = "";
   document.getElementById("mainEl").style.display = "";
-  const sel = document.getElementById("dateSel");
-  sel.innerHTML = runs.map(r=>`<option value="${r.query_date}">${r.query_date}（綠${r.summary.green??"?"} 黃${r.summary.yellow??"?"} 紅${r.summary.red??"?"}）</option>`).join("");
+  runs.forEach(r=>runByDate[r.query_date]=r);
   if(runs.length) loadRun(runs[0].query_date);
   else document.getElementById("list").innerHTML = `<div class="empty"><div class="ei">📭</div>還沒有稽核資料</div>`;
+}
+/* 日曆選擇器：每日標燈號圓點，日曆即每月總覽 */
+let calYM = null;
+function updateDateBtn(){
+  const d = cur ? cur.run.query_date : (runs[0]?.query_date || "");
+  document.getElementById("dateBtn").textContent = `📅 ${d} ▾`;
+}
+function toggleCal(e){
+  e.stopPropagation();
+  const pop = document.getElementById("calPop");
+  if(pop.style.display === "none"){
+    calYM = (cur ? cur.run.query_date : runs[0].query_date).slice(0,7);
+    renderCal(); pop.style.display = "";
+  } else pop.style.display = "none";
+}
+document.addEventListener("click", e=>{
+  const pop = document.getElementById("calPop");
+  if(pop && pop.style.display !== "none" && !pop.contains(e.target)) pop.style.display = "none";
+});
+function calShift(n){
+  const [y,m] = calYM.split("-").map(Number);
+  const d = new Date(y, m-1+n, 1);
+  calYM = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+  renderCal();
+}
+function renderCal(){
+  const pop = document.getElementById("calPop");
+  const [y,m] = calYM.split("-").map(Number);
+  const startDow = new Date(y, m-1, 1).getDay();
+  const dim = new Date(y, m, 0).getDate();
+  const monthFlag = runs.filter(r=>r.query_date.startsWith(calYM))
+    .reduce((a,r)=>[a[0]+(+r.summary?.red||0), a[1]+(+r.summary?.yellow||0)], [0,0]);
+  let h = `<div class="calHead"><button class="calNav" onclick="event.stopPropagation();calShift(-1)">‹</button><span>${y}年${m}月</span><button class="calNav" onclick="event.stopPropagation();calShift(1)">›</button></div>`;
+  h += `<div class="calGrid">` + ["日","一","二","三","四","五","六"].map(d=>`<span class="calDow">${d}</span>`).join("");
+  for(let i=0;i<startDow;i++) h += `<span></span>`;
+  for(let d=1;d<=dim;d++){
+    const ds = `${calYM}-${String(d).padStart(2,"0")}`;
+    const r = runByDate[ds];
+    const selCls = (cur && cur.run.query_date===ds) ? " sel" : "";
+    if(r){
+      const s = r.summary||{};
+      const dot = (+s.red>0) ? "r" : (+s.yellow>0) ? "y" : ((+s.items>0) ? "g" : "e");
+      h += `<button class="calDay${selCls}" title="綠${s.green??0} 黃${s.yellow??0} 紅${s.red??0}" onclick="pickDate('${ds}')">${d}<i class="dot ${dot}"></i></button>`;
+    } else h += `<span class="calDay off">${d}</span>`;
+  }
+  h += `</div><div class="calFoot"><span>本月異常：紅 ${monthFlag[0]}、黃 ${monthFlag[1]}</span><span class="linky" onclick="pickDate(runs[0].query_date)">最新</span></div>`;
+  pop.innerHTML = h;
+}
+function pickDate(ds){
+  document.getElementById("calPop").style.display = "none";
+  loadRun(ds);
 }
 async function loadRun(date){
   document.getElementById("list").innerHTML = SKEL;
@@ -320,6 +391,7 @@ async function loadRun(date){
       (cur.itemsByConfirm[it.confirm_id] ??= []).push(it);
     }
     render();
+    updateDateBtn();
     if(view==="drivers") renderDrivers();
     if(view==="trucks") renderTrucks();
   }catch(e){ document.getElementById("list").innerHTML = `<div class="empty">載入失敗：${e.message}</div>`; }
@@ -374,6 +446,7 @@ function openItem(id){
   const ev = it.evidence || {};
   let b = `<div class="verdict-band ${it.verdict}"><span>${V[it.verdict].ico}</span><span>${V[it.verdict].label}｜${it.reason||""}</span></div>
     <div class="note">${cf.confirm_staff} ${cf.confirm_time_raw} 確認｜司機 ${cf.driver}｜車頭 ${cf.truck}</div>`;
+  if(it.verdict !== "green") b += statusHtml(it);
   const ivs = ev.intervals || [];
   if(ivs.length){
     b += `<div class="sec-title">在站區間</div><div class="tbl-wrap"><table><thead><tr><th>站所</th><th>進站</th><th>離站</th></tr></thead><tbody>`;
@@ -414,6 +487,39 @@ function openItem(id){
   }
   document.getElementById("dlgBody").innerHTML = b;
   document.getElementById("dlg").showModal();
+}
+/* 結案追蹤（紅/黃燈處理狀態，改狀態需管理密碼） */
+const STATUS_OPTS = ["待處理","已對質","已釐清","確認異常"];
+const isAdmin = ()=>!!localStorage.getItem("ca_admin");
+function statusHtml(it){
+  const badge = {"已釐清":"g","已對質":"y","確認異常":"r"}[it.status] || "";
+  let h = `<div class="sec-title">處理狀態</div><div class="note">目前：<span class="mini ${badge}">${it.status||"待處理"}</span>`;
+  if(it.status_note) h += `｜${it.status_note}`;
+  if(it.status_at) h += `｜${fmtTs(it.status_at)}`;
+  if(!isAdmin()){
+    h += `　<span class="linky" onclick="adminUnlock(${it.id})">✎ 管理</span></div>`;
+  }else{
+    h += `</div><div class="statusEdit">` +
+      STATUS_OPTS.map(s=>`<button class="${it.status===s?"primary":""}" onclick="saveStatus(${it.id},'${s}')">${s}</button>`).join("") +
+      `<input type="text" id="stNote" maxlength="200" placeholder="處理備註（選填，按狀態鈕時一併儲存）" value="${(it.status_note||"").replace(/"/g,"&quot;")}"></div>`;
+  }
+  return h;
+}
+function adminUnlock(id){
+  const p = prompt("管理密碼");
+  if(p){ localStorage.setItem("ca_admin", p.trim()); openItem(id); }
+}
+async function saveStatus(id, status){
+  const note = document.getElementById("stNote")?.value.trim() || "";
+  try{
+    await api({action:"set_status", admin: localStorage.getItem("ca_admin"), id, status, note});
+    const it = cur.items.find(x=>x.id===id);
+    it.status = status; it.status_note = note || null; it.status_at = new Date().toISOString();
+    openItem(id);
+  }catch(e){
+    if(/forbidden/.test(String(e.message))){ localStorage.removeItem("ca_admin"); alert("管理密碼錯誤"); }
+    else alert("儲存失敗：" + e.message);
+  }
 }
 /* 車頭 */
 let view = "audit";
@@ -821,9 +927,10 @@ function tableStaff(staff){
 }
 function sheetAudit(rows, withDate){
   const flags = rows.filter(x=>x.it.verdict!=="green");
-  const head = [...(withDate?["查核日"]:[]), "燈號","分類","櫃號","移櫃站","確認人員","確認時間","外聘司機（車頭）","確認前最後位置","確認後首次到場域","結論"];
+  const head = [...(withDate?["查核日"]:[]), "燈號","分類","櫃號","移櫃站","確認人員","確認時間","外聘司機（車頭）","確認前最後位置","確認後首次到場域","結論","處理狀態"];
   const body = flags.map(x=>[...(withDate?[x.date]:[]), V[x.it.verdict].label, x.cls, x.it.container_no, x.cf.move_station, x.cf.confirm_staff,
-    x.cf.confirm_time_raw, `${x.cf.driver}（${x.cf.truck}）`, x.pos.before, x.pos.after, x.pos.conclusion]);
+    x.cf.confirm_time_raw, `${x.cf.driver}（${x.cf.truck}）`, x.pos.before, x.pos.after, x.pos.conclusion,
+    `${x.it.status||"待處理"}${x.it.status_note?`：${x.it.status_note}`:""}`]);
   const off = withDate?1:0;
   return buildSheet([
     {type:"title", text:`需追查項目（${flags.length} 項）`},
