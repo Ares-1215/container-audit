@@ -964,6 +964,15 @@ function sheetLegs(trucks){
       fill:(row,i)=>meta[i].noGate?XL.FILL.yellow:meta[i].zone?XL.FILL.green:null, empty:"本日無車頭資料"},
   ], head.length);
 }
+/* 需追查處理進度一行文（總覽用）：讓主管看到「發生了幾件、辦到哪了」 */
+function statusProgressLine(rows){
+  const flags = rows.filter(x=>x.it.verdict!=="green");
+  if(!flags.length) return null;
+  const cnt = {};
+  flags.forEach(x=>{ const st = x.it.status||"待處理"; cnt[st]=(cnt[st]||0)+1; });
+  const parts = STATUS_OPTS.filter(st=>cnt[st]).map(st=>`${st} ${cnt[st]} 件`).join("、");
+  return `需追查 ${flags.length} 件處理進度：${parts}${(cnt["待處理"]||0)===0 ? "（全部已處理 ✓）" : ""}`;
+}
 async function exportExcel(){
   if(!cur) return;
   try{ await ensureXLSX(); }catch(e){ alert(e.message); return; }
@@ -972,6 +981,7 @@ async function exportExcel(){
   const byTruck = Object.fromEntries(trucks.map(t=>[t.truck_code,t]));
   const drivers = computeDrivers(byTruck), staff = computeStaff(), s = cur.run.summary||{};
   const rows = reportRows(cur, date);
+  const prog = statusProgressLine(rows);
   const ws1 = buildSheet([
     {type:"title", text:`${REPORT_ORG} 移櫃確認稽核報告`},
     {type:"sub", text: subLine(`查核日期 ${date}`)},
@@ -980,6 +990,7 @@ async function exportExcel(){
       vals:[s.confirms??cur.confirms.length, s.items??cur.items.length, s.containers??"—", s.green??0, s.yellow??0, s.red??0],
       inks:[null,null,null,XL.INK.green,XL.INK.yellow,XL.INK.red]},
     {type:"gap"},
+    ...(prog ? [{type:"lines", lines:[prog]}, {type:"gap"}] : []),
     {type:"sec", text:"外聘司機彙總（依紅→黃→櫃數排序）"}, tableDrivers(drivers, true),
     {type:"gap"},
     {type:"sec", text:"確認人員彙總（誰在什麼時間叫了外聘司機）"}, tableStaff(staff),
@@ -1061,6 +1072,8 @@ async function exportMonthly(){
       `三、異常集中：司機 ${top(dFlag,3)||"無"}；經手確認人員 ${top(sFlag,3)||"無"}。`,
       `四、異常確認時段以 ${topHour&&topHour[2]?`${topHour[0]} 為主（${topHour[2]} 件）`:"無明顯集中"}；明細見「全月需追查」工作表。`,
     ];
+    const prog = statusProgressLine(rows);
+    if(prog) summary.push(`五、${prog}。`);
 
     const ws1 = buildSheet([
       {type:"title", text:`${REPORT_ORG} 移櫃確認稽核月報`},
